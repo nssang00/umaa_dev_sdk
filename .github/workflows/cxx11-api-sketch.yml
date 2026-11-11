@@ -14,21 +14,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compile v0.8.5 role-based AutoPilot sketch (not runtime)
+      - name: Compile v0.8.5 Service-centric AutoPilot example (C++11 sketch only)
         run: |
           g++ -std=c++11 -Wall -Wextra -pedantic -fsyntax-only examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp
-      - name: Reject wrong flow/operation at compile time
+      - name: Reject Report Operation as Command using provide<S>()
         run: |
-          cat > /tmp/umaa_invalid_api.cpp <<'CPP'
+          cat > /tmp/umaa_invalid_provider.cpp <<'CPP'
           #include "examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp"
-          void expect_failure() {
-              umaa::CommandProvider<mo::GlobalVectorControl> provider;
-              // A Report cannot be a Command and belongs to a different Service.
-              provider.onCommand<sa::GlobalPoseStatus::Report>(0);
+          void should_fail(umaa::Registrar<AutoPilot>& m) {
+              m.provide<MO::GlobalVectorControl>()
+                .onCommand<SA::GlobalPoseStatus::reportGlobalPose>(
+                    &AutoPilot::onSetGlobalVector);
           }
           CPP
-          if g++ -std=c++11 -I. -fsyntax-only /tmp/umaa_invalid_api.cpp > /tmp/umaa_invalid.log 2>&1; then
-            echo "ERROR: invalid Operation unexpectedly accepted"
+          if g++ -std=c++11 -I. -fsyntax-only /tmp/umaa_invalid_provider.cpp > /tmp/umaa_invalid_provider.log 2>&1; then
+            echo "ERROR: wrong Service / Report operation accepted as Command"
             exit 1
           fi
-          grep -E "Operation belongs to another Service|Operation role mismatch" /tmp/umaa_invalid.log
+          grep -E "Operation belongs to another Service|Operation role mismatch" /tmp/umaa_invalid_provider.log
+      - name: Reject Command Operation as Report using consume<S>()
+        run: |
+          cat > /tmp/umaa_invalid_consumer.cpp <<'CPP'
+          #include "examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp"
+          void should_fail(umaa::Registrar<MissionManager>& m) {
+              m.consume<MO::GlobalVectorControl>()
+                .onReport<MO::GlobalVectorControl::setGlobalVector>(
+                    &MissionManager::onGlobalVectorCommandStatus);
+          }
+          CPP
+          if g++ -std=c++11 -I. -fsyntax-only /tmp/umaa_invalid_consumer.cpp > /tmp/umaa_invalid_consumer.log 2>&1; then
+            echo "ERROR: Command operation accepted as Queryless Report"
+            exit 1
+          fi
+          grep -E "Operation role mismatch|Queryless Report flow required" /tmp/umaa_invalid_consumer.log
