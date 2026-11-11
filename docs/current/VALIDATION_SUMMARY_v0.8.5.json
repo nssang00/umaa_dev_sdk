@@ -56,13 +56,13 @@
     "github_files_created": "YES",
     "readme_handoff_updated": "YES",
     "v0_8_4_archived_and_original_content_verified": "YES",
-    "github_actions_workflow_configured": "YES - .github/workflows/cxx11-api-sketch.yml",
-    "github_actions_run_status": "UNVERIFIED - available GitHub connector exposed no push-triggered runs or combined statuses at time of inspection",
-    "compiler_run_on_exact_v0_8_5_files": "NOT RUN - local container cannot resolve raw.githubusercontent.com; GitHub Actions check is configured",
+    "github_actions_workflow_configured": "YES - updated to provide/consume and two negative registration checks",
+    "github_actions_run_status": "NOT CONFIRMED - workflow runs may be pending/unavailable via connector",
+    "compiler_run_on_exact_v0_8_5_files": "NOT RUN",
     "real_generated_idl_sdk_compilation": "NOT RUN",
     "full_139_service_operation_mapping": "NOT RUN",
     "dds_runtime_icd_conformance": "NOT RUN",
-    "negative_compile_tests": "CONFIGURED IN CI, NOT YET VERIFIED AS PASSED"
+    "negative_compile_tests": "CONFIGURED IN CI FOR provide/consume, NOT YET VERIFIED PASSED"
   },
   "open_risks": [
     "Unknown/recovered Command state and payload safety",
@@ -99,5 +99,27 @@
     "latest_edited_example_compiler_check": "NOT RUN",
     "actual_idl_generated_runtime_header_check": "NOT RUN",
     "docs_supplement": "docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md"
+  },
+  "revision_date": "2026-11-12",
+  "improvement_A_registration": {
+    "status": "SPEC AND MOCK C++ DECLARATION UPDATED",
+    "user_registration": [
+      "Registrar::provide<S>() -> ProviderBinding<S>",
+      "Registrar::consume<S>() -> ConsumerBinding<S>"
+    ],
+    "implementation_model": "Generated Service static metadata; four runtime role classes remain unchanged under service<S>() accessors",
+    "compile_time_contracts_in_mock": [
+      "Op::ServiceType == S",
+      "Op::role matches onCommand/onCancel/onStatus/onAck/onExecutionStatus/onRecoveredCommand/onReport",
+      "Op::flow matches CommandResponse or RequestReplyNoQueryData"
+    ],
+    "callback_signature_validation": "NOT IMPLEMENTED IN MOCK, REQUIRED IN PRODUCTION",
+    "config_mixed_service_coverage": "DESIGN SUPPORTED; NOT INTEGRATION TESTED",
+    "example_file": "examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp",
+    "cxx11_ci_file": ".github/workflows/cxx11-api-sketch.yml",
+    "github_ci_success": "NOT CONFIRMED (workflow configuration updated only)",
+    "real_idl_dds_generated_types_compilation": "NOT RUN",
+    "runtime_DDS_conformance": "NOT RUN",
+    "static_dynamic_report_subscription_rule": "UNCHANGED: static onReport auto subscribes at Component start; dynamic request<Op>(handler) instead of both"
   }
 }
