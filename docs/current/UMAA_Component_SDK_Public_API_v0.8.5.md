@@ -1,11 +1,12 @@
 # UMAA Component SDK — 사용자 Public API v0.8.5
 
 > **상태:** SDK 설계 계약(제안). 구현 코드·전체 서비스 타입 생성·DDS/ICD 런타임 적합성 인증이 아니다.  
-> **갱신:** 2026-11-11 · **C++:** C++11 · **전 버전:** [v0.8.4](../history/v0.8.4/UMAA_Component_SDK_Public_API_v0.8.4.md)  
+> **갱신:** 2026-11-12 (개선안 A: Service 중심 역할 등록) · **C++:** C++11 · **전 버전:** [v0.8.4](../history/v0.8.4/UMAA_Component_SDK_Public_API_v0.8.4.md)  
 > **주요 입력:** 사용자 제공 `UMAA_Public_API_Summary_KO.md`, UMAA ICD 6.0 (§3.8, §3.9, §5.1, §5.2), RTI Starter Kit Hook 목록.
 
 ## 0. 이 설계에서 확정할 사용자 관점
 
+- **사용자 등록 API는 2개:** `m.provide<S>()`와 `m.consume<S>()`를 사용한다. Provider/Consumer 역할은 Service 단위로 선언하고, Flow Control 및 Callback 적합성은 등록된 실제 `Op`의 `OperationRole/FlowKind`로 판정한다. 등록 메서드가 네 역할 객체를 직접 반환하는 것으로 오해하지 않는다.
 - **2 Flow Control × 2 Role = 4개 런타임 인터페이스:** `CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>`. `S`는 생성된 **Service 타입**, `Op`는 그 Service에 속하는 **Operation 타입**.
 - **Service는 하나의 정적 정의 타입:** `Service<Derived, ServiceKind>`. 네 런타임 클래스는 Service의 서브클래스가 아니라, 해당 Service에 대해 **Component가 사용 가능한 역할 인터페이스**다. 사용자에게 `ControlServiceProvider`·`SpecsServiceConsumer` 등의 상속은 요구하지 않는다.
 - **Action은 업무 의도, Hook은 실제 사용자 이벤트:** `command`/ `cancel`/ `respond`/ `publish`/ `dispose`/ `request`와 `onCommand`/ `onCancel`/ `onStatus`/ `onReport`. `onAck`, `onExecutionStatus`, `onRecoveredCommand`는 선택적.
@@ -33,26 +34,46 @@
 
 **등록 vs 상속:** [실제 ICD 명칭 기반 비교 및 결론](API_REGISTRATION_VS_INHERITANCE_v0.8.5.md)을 참고한다. 범용 Component는 다중 Service/Role이 흔하므로 **Callback 등록 방식을 기본 UX**로 하고, Service별 Provider/Consumer 구현 클래스 상속을 필수로 요구하지 않는다.
 
-## 2. 구성과 실행 객체: Component는 Service를 대신하지 않는다
+## 2. 구성과 실행 객체: Service 중심 등록(개선안 A)
+
+구성 시 사용자는 어떤 Service를 제공/소비하는지 먼저 선언하고, 그 다음 **실제 ICD Operation 이름**으로 Hook을 연결한다. 네 가지 `CommandProvider/Consumer`·`ReportProvider/Consumer`는 여전히 SDK 내부의 **런타임 역할 객체**로 존재한다.
 
 ```cpp
-// 사용자 코드: 해당 Component의 역할과 Hook 연결(설정 시)
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
+// 사용자 업무 Callback은 AutoPilot 멤버 함수
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
-      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCommand)
-      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCancel);
-    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
-      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onPoseReport);
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(
+          &AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(
+          &AutoPilot::onCancelGlobalVector);
+
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(
+          &AutoPilot::onGlobalPoseReport);
 }
 
-// 런타임에 사용하는 실행 객체: Component::service<S>()에서 획득
-service<umaa::services::MO::GlobalVectorControl>().commandProvider().respond(token, progress);
-service<umaa::services::SA::GlobalPoseStatus>().reportConsumer();  // onReport 등록 시 시작과 함께 구독
+// 실제 명령 제어·데이터 송수신은 네 런타임 역할 객체가 책임짐
+service<MO::GlobalVectorControl>().commandProvider().respond(token, progress);
+service<SA::GlobalPoseStatus>().reportConsumer(); // onReport 등록 시 자동 구독
 ```
 
-등록기 `m.commandProvider<S>()`와 런타임 `service<S>().commandProvider()`는 동일 역할에 대해 **구성 시점 / 사용 시점**을 구분한다. SDK 내부에서 실질적인 역할 객체를 소유한다. 사용자가 Service를 상속하거나 Provider 클래스를 직접 구현할 의무는 없다. `CommandProvider<S>` 등의 객체에서 실제 DDS 동작은 SDK가 구현한다.
+**구성 시점:** `Registrar<Component>::provide<S>()`는 `ProviderBinding<S>`을, `consume<S>()`는 `ConsumerBinding<S>`을 반환한다. 각각의 Hook 등록 함수는 같은 바인딩을 반환하여 체이닝 가능하다. 등록기는 Component·Service·Role·Operation 연결을 저장하며 DDS/Flow Control 구현은 직접 노출하지 않는다.
 
-`S` 타입에 해당 역할이 없거나 `Op::ServiceType != S`이면 컴파일/등록 오류. CommandOp와 ExecutionOp 등 방향을 혼용해도 오류. 동일 Component가 같은 S에 Provider와 Consumer 역할을 동시에 보유할 수 있다.
+**런타임:** `Component::service<S>().commandProvider()/commandConsumer()/reportProvider()/reportConsumer()`가 네 실제 실행 역할 객체를 돌려준다. **등록기 `m.provide/consume`와 런타임 `service<S>().*`는 서로 다른 책임**이다.
+
+**Operation별 필수 타입 검사:**
+
+- `onCommand<Op>`/`onCancel<Op>`, `onStatus<Op>`/`onAck<Op>`/`onRecoveredCommand<Op>`: `Op::ServiceType == S`, `Op::role == Command`, `Op::flow == CommandResponse`.
+- `onExecutionStatus<Op>`: `Op::role == ExecutionStatus`, `Op::flow == CommandResponse`와 동일 Service 소속.
+- `onReport<Op>`: `Op::role == Report`, `Op::flow == RequestReplyNoQueryData`와 동일 Service 소속.
+- `provide<S>()` 단독 등록은 Report-only Provider에도 유효하며 `onRequest()`를 요구하지 않는다. 반면 Command를 실제로 제공하려면 서비스별 Command Operation에 필요한 비즈니스 Handler가 있어야 한다.
+- Config처럼 Command + 일반 Report가 혼합된 Service에서도 `provide<S>()`/ `consume<S>()`는 **각각 한 번만 선언**하고, 그 아래 Operation별 Hook을 조합한다. 일반 Report 발행은 런타임 `reportProvider()`를 이용한다.
+- `S`의 지원 capability는 **생성 Operation 메타데이터**로 검증한다. ServiceKind만으로 Command 또는 Report 기능 존재를 추론하지 않는다. 잘못된 Operation/Handler 서명은 실제 구현에서 컴파일 또는 명시적 등록 오류가 되어야 한다.
+
+**비채택:** `m.commandProvider<S>()`, `m.reportConsumer<S>()` 등의 네 가지 등록 함수와 자동 생성 `.onSetGlobalVector()` 같은 편의 메서드를 기본 API에 더하지 않는다. 필요하다면 향후 선택적 편의 계층으로 분리할 수 있지만, v0.8.5 현재 등록 API는 `provide/consume` 둘뿐이다.
 
 ## 3. CommandProvider<S>: 명령 실행 책임
 
@@ -129,7 +150,7 @@ public:
 
 **구독 수명주기 계약:**
 
-1. `m.reportConsumer<S>().onReport<Op>(&App::handler)`는 **정적 자동 구독**: Component가 Start될 때 생성, Stop 때 정리. Hook은 최초 유효 값, 갱신, 삭제(Disposed)에 반응하며 여러 번 호출될 수 있다.
+1. `m.consume<S>().onReport<Op>(&App::handler)`는 **정적 자동 구독**: Component가 Start될 때 생성, Stop 때 정리. Hook은 최초 유효 값, 갱신, 삭제(Disposed)에 반응하며 여러 번 호출될 수 있다.
 2. `service<S>().reportConsumer().request<Op>(handler)`는 **명시적 동적 구독**: 호출 시 생성, 반환된 `Subscription`의 `close()`/소멸 시 정리. Handler를 함께 전달하므로 별도 onReport 등록은 요구하지 않는다.
 3. **한 Component의 동일 S/Op에 정적 onReport와 동적 request를 동시에 등록하는 것은 기본적으로 `AlreadySubscribed` 오류**. 다른 필터/키로 병행 구독이 정말 필요해질 때 별도 옵션 계약을 확장한다. 암묵적 이중 콜백 금지.
 4. `onReport` Callback은 `ReportEvent<T>`의 Data/Disposed, Key, Source, Timestamp, Complete/Incomplete 상태를 받는다. `getLatest`는 선택적인 SDK 캐시(키 기반)로서 최신 유효 값만 노출; Disposed된 키는 없는 값으로 처리.
@@ -161,42 +182,41 @@ CommandConsumer<GlobalVectorControl>    CommandProvider<GlobalVectorControl>
 
 단일 AutoPilot Component가 **Command Provider와 Report Consumer 두 역할**을 맡고, 통합 예제의 주변 MissionManager·PositionSensor가 나머지 **Command Consumer와 Report Provider**를 맡아 네 클래스를 모두 실제 사용한다.
 
-**대표 등록:**
+**대표 등록 (실제 ICD 명칭, 개선안 A):**
 
 ```cpp
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
-      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCommand)
-      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCancel);
-    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
-      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onPoseReport);
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onCancelGlobalVector);
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onGlobalPoseReport);
 }
 ```
 
-**동적 요청은 별도 대안:** auto `onReport<Op>`를 등록하지 않은 Component에서만
-`auto sub = service<PoseSvc>().reportConsumer().request<PoseOp>(lambda);` 로 사용.
+**동적 요청은 별도 대안:** `onReport<Op>`를 등록하지 않은 Component에서만 `auto sub = service<SA::GlobalPoseStatus>().reportConsumer().request<SA::GlobalPoseStatus::reportGlobalPose>(handler);` 를 사용한다. 기본 자동 구독과 중복 등록 금지 정책은 유지한다.
 
-## 9. v0.8.4 대비 API 이행표
+## 9. 이행표: 이전 등록 표현 → 개선안 A
 
-| v0.8.4 | v0.8.5 | 상태 |
+| 이전 등록 표현 | 개선안 A (현재 v0.8.5) | 비고 |
 |---|---|---|
-| `m.provider<S>().command<Op>(h)` | `m.commandProvider<S>().onCommand<Op>(h)` | 변경 |
-| `m.provider<S>().cancel<Op>(h)` | `m.commandProvider<S>().onCancel<Op>(h)` | 변경 |
-| `m.consumer<S>().report<CommandStatusOp>(h)` | `m.commandConsumer<S>().onStatus<CommandOp>(h)` | 변경 |
-| `m.consumer<S>().report<AckOp>(h)` | `m.commandConsumer<S>().onAck<CommandOp>(h)` | 변경 |
-| `m.consumer<S>().report<ExecutionOp>(h)` | `m.commandConsumer<S>().onExecutionStatus<ExecutionOp>(h)` | 변경 |
-| `m.consumer<S>().report<ReportOp>(h)` | `m.reportConsumer<S>().onReport<ReportOp>(h)` | 변경 + 정적 자동 구독 명시 |
-| `send<CommandOp>(payload)` | `commandConsumer.command<CommandOp>(payload)` | 변경 |
-| `CommandCall.update(payload)` | `CommandCall<CommandOp>::update(payload)` | 템플릿 타입 강화 |
-| `ConsumerOptions.onRecovered<CommandOp>` | `CommandConsumer::onRecoveredCommand<CommandOp>` | 위치/이름 변경 |
-| `Component::respond` | `CommandProvider::respond` | 책임 이동 |
-| `Component::publish<ExecutionOp>(token,data)` | `CommandProvider::publish<ExecutionOp>(token,data)` | 책임 이동 |
-| `Component::publish<ReportOp>(data/snapshot)` | `ReportProvider::publish<ReportOp>(data/snapshot)` | 책임 이동 |
-| `Component::dispose<ReportOp>(key)` | `ReportProvider::dispose<ReportOp>(key)` | 책임 이동 |
-| 없음 | `ReportConsumer::request<ReportOp>(handler)` | 추가 (선택적 동적 구독) |
-| `m.provider<S>()`/ `m.consumer<S>()` | 네 역할 구성 함수 | 더 명시적으로 변경 |
+| `m.provider<S>().command<Op>(handler)` (v0.8.4) | `m.provide<S>().onCommand<Op>(handler)` | Command Handler |
+| `m.provider<S>().cancel<Op>(handler)` (v0.8.4) | `m.provide<S>().onCancel<Op>(handler)` | 취소 처리 |
+| `m.commandProvider<S>().onCommand<Op>(handler)` (구 v0.8.5) | `m.provide<S>().onCommand<Op>(handler)` | 역할 등록을 2개로 통일 |
+| `m.commandConsumer<S>().onStatus<CmdOp>(handler)` | `m.consume<S>().onStatus<CmdOp>(handler)` | Command 상태 |
+| `m.commandConsumer<S>().onAck<CmdOp>(handler)` | `m.consume<S>().onAck<CmdOp>(handler)` | ACK 선택 |
+| `m.commandConsumer<S>().onExecutionStatus<ExecOp>(handler)` | `m.consume<S>().onExecutionStatus<ExecOp>(handler)` | 실행 상세 선택 |
+| `m.commandConsumer<S>().onRecoveredCommand<CmdOp>(handler)` | `m.consume<S>().onRecoveredCommand<CmdOp>(handler)` | 복구 판단 선택 |
+| `m.reportConsumer<S>().onReport<ReportOp>(handler)` | `m.consume<S>().onReport<ReportOp>(handler)` | Queryless 자동 구독 |
+| `m.reportProvider<S>()` | `m.provide<S>()` | Report Provider는 Hook 불필요 |
+| `Component::send<CmdOp>(payload)` (v0.8.4) | `service<S>().commandConsumer().command<CmdOp>(payload)` | 런타임 Action |
+| `Component::publish/respond/dispose` (v0.8.4) | `service<S>().reportProvider()/commandProvider()`의 Action | 런타임 위치 유지 |
+| `CommandCall.update/get/wait` | `CommandCall<CmdOp>::update/get/wait` | 이번 개선에서 변경 없음 |
 
-**호환성:** 이는 **소스 API 변경안**이며 실제 이전 바이너리 호환성이 검증되었다고 주장하지 않는다. v0.8.4는 이력에 보존하고 v0.8.5를 신규 정규 표기로 취급한다.
+**소스 호환성:** 개선안 A는 **등록 소스 API 변경**이다. 네 가지 기존 등록 메서드가 영구 호환 alias로 제공된다고 가정하면 안 된다. 네 런타임 역할 클래스와 Action·Hook 이름 자체는 유지한다. 기존 v0.8.4는 history에 보존되며, 본 명세는 v0.8.5의 **2026-11-12 개정본**이다.
 
 ## 10. 검증 상태와 미해결 문제
 
