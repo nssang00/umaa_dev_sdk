@@ -1,0 +1,23 @@
+<PARSED TEXT FOR SHEET: 1 / 1 TABS
+TAB NAME: M_COMMAND_CANCEL_ACCEPTANCE_v0.8.3.csv>
+index,id,icd_reference,user_scenario,public_api_path,expected_contract,classification
+0,H01,EO §3.4,Config 서비스의 Command Operation을 등록,m.command<Config::SetA>,한 Op만 Handler와 매칭,ICD 동작 명시
+1,H02,EO §3.4,Control 서비스의 Command Operation 등록,m.command<ControlOp>,Control 전용 동사가 없어도 등록 가능,ICD 동작 명시
+2,H03,CO-EXP §5.1.1,Config 서비스의 두 개 Command를 구분,"m.command<Config::Add>,m.command<Config::Delete>",각각 타입·Payload별 Handler,ICD Operation 명시
+3,H04,EO §3.4,하나의 Config 안에 Report 동시 존재,"publish<ReportOp>,m.report<ReportOp>",Command Handler와 Report Handler를 혼동하지 않음,ICD Operation 명시
+4,H05,EO §5.1.4.1,최초 Command 수신 후 수락/거절,CommandDecision accepted/rejected,ACK/COMMANDED/FAILED 의미 분리,ICD 상태 명시
+5,H06,EO §5.1.4.1,비동기 검증 보류,CommandDecision deferred + respond,DEFERRED를 UMAA Status로 표시하지 않음,ICD에서 도출한 SDK 설계
+6,H07,EO §5.1.4.2,활성 Command 갱신 수신,CommandInfo.kind Updated + m.command,동일 Source/Session 새 Timestamp와 전체 Payload,ICD 갱신 명시
+7,H08,EO §5.1.4.2,과거 갱신 비동기 응답,"CommandToken,respond",이전 Token으로 현재 상태 변경 불가,ICD에서 도출한 SDK 설계
+8,H09,EO §5.1.2.1,Provider 복구 Command 처리,CommandInfo.kind Recovered,이전 Status와 Payload 확인하여 복구/실패 판단,ICD 복구 명시
+9,H10,EO §5.1.4.5,Config Command 취소 요청 수신,m.cancel<Config::SetA>,동일 원 Command Op 지정,ICD 취소 명시
+10,H11,EO §5.1.4.5,Control Command 취소 요청 수신,m.cancel<ControlOp>,Control 전용 Cancel 동사 없음,ICD 취소 명시
+11,H12,EO §5.1.4.5,취소 불가능 판단,CancelDecision cannotCancel,별도 Cancel Reply 만들지 않고 원 Command 상태 추적,ICD 취소 명시
+12,H13,EO §5.1.4.5,취소 중 지연 완료,"CancelDecision deferred + respond(token,canceled)",실제 중단 확인 전 CANCELED 금지,ICD에서 도출한 SDK 설계
+13,H14,EO §5.1.4.5,Consumer 연결 상실,CancelInfo.trigger ConsumerLost/Unknown,"원인 불명은 Unknown, 안전정지 필요 경로 보존",ICD 연결상실 명시
+14,H15,EO §5.1.4.5,명령 완료 후 취소 접수,"m.cancel,CancelInfo",이미 Terminal이면 Handler로 상태 뒤집지 않음,ICD Terminal 취소 명시
+15,H16,EO §3.4,Report Op를 Command로 등록 실수,OperationTraits role check,컴파일/등록 오류,ICD에서 도출한 SDK 설계
+16,H17,EO §3.4,여러 Command가 있는 Service를 축약 등록,ServiceTraits unambiguous resolution,모호성 오류 및 Service::Op 유도,ICD에서 도출한 SDK 설계
+17,H18,EO §5.1.4.5,지속 명령에 취소 Handler 미등록,m.cancel 또는 명시된 안전 정책,"암묵적 CANCELED 금지, 서비스 완전성 오류",ICD에서 도출한 SDK 설계
+18,H19,EO §5.1.4.1,ExecutionStatus 업무 데이터 발행,publish<ExecutionOp>,프로토콜 상태와 업무 데이터 구분,ICD Operation 명시
+19,H20,EO §5.2.1,Specs/Status Report 수신,m.report<ReportOp>,새 query Handler 없이 구독,ICD Request/Reply 명시
