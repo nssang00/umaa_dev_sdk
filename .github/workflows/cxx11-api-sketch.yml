@@ -1,0 +1,34 @@
+name: C++11 Public API sketch syntax
+on:
+  push:
+    paths:
+      - "examples/api_sketch/**"
+      - ".github/workflows/cxx11-api-sketch.yml"
+  pull_request:
+    paths:
+      - "examples/api_sketch/**"
+      - ".github/workflows/cxx11-api-sketch.yml"
+
+jobs:
+  syntax-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile v0.8.5 role-based AutoPilot sketch (not runtime)
+        run: |
+          g++ -std=c++11 -Wall -Wextra -pedantic -fsyntax-only examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp
+      - name: Reject wrong flow/operation at compile time
+        run: |
+          cat > /tmp/umaa_invalid_api.cpp <<'CPP'
+          #include "examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp"
+          void expect_failure() {
+              umaa::CommandProvider<mo::GlobalVectorControl> provider;
+              // A Report cannot be a Command and belongs to a different Service.
+              provider.onCommand<sa::GlobalPoseStatus::Report>(0);
+          }
+          CPP
+          if g++ -std=c++11 -I. -fsyntax-only /tmp/umaa_invalid_api.cpp > /tmp/umaa_invalid.log 2>&1; then
+            echo "ERROR: invalid Operation unexpectedly accepted"
+            exit 1
+          fi
+          grep -E "Operation belongs to another Service|Operation role mismatch" /tmp/umaa_invalid.log
