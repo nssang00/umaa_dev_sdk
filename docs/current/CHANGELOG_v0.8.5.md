@@ -1,6 +1,6 @@
 # UMAA Component SDK v0.8.5 변경 내역
 
-**날짜:** 2026-11-11 · **상태:** 설계안 (코드 생성 / DDS 통합 이전)
+**날짜:** 2026-11-11 (2026-11-12 개선안 A 추가) · **상태:** 설계안 (코드 생성 / DDS 통합 이전)
 
 ## 공개 API 변경
 
@@ -40,3 +40,13 @@
 - IDL `UMAA::MO::GlobalVectorControl` (module)과 제안 SDK facade `umaa::services::MO::GlobalVectorControl` (class)를 명시적으로 분리.
 - 한 Component가 여러 Service/Role을 담당할 때는 상속·override보다 타입 안전한 Callback 등록을 기본 UX로 권고.
 - 세부 근거: [명칭 및 사용 방식 비교](API_REGISTRATION_VS_INHERITANCE_v0.8.5.md).
+
+## 2026-11-12 개선안 A — Service 중심 등록
+
+- **기본 등록 구문 변경:** `m.commandProvider<S>()`/`m.reportProvider<S>()` → `m.provide<S>()`, `m.commandConsumer<S>()`/`m.reportConsumer<S>()` → `m.consume<S>()`.
+- 새로운 구성용 타입 `ProviderBinding<S>`/`ConsumerBinding<S>`이 Operation의 소속·역할·Flow Control에 따라 `onCommand/onCancel/onStatus/onAck/onExecutionStatus/onRecoveredCommand/onReport`를 검사한다. Hook은 체이닝 가능하다.
+- **유지:** `CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>`는 실제 송수신 런타임 객체이며 `service<S>().commandProvider()/...()` 접근은 변하지 않는다.
+- Report-only Provider는 `m.provide<S>()`만으로 역할을 선언한다. Config 등 혼합 Service의 명령 Hook·일반 Report 사용을 하나의 역할 선언으로 표현할 수 있다.
+- 자동 `onReport` 구독과 명시적 `request(handler)` 대안, 중복 구독 금지, Queryless Provider에 별도 onRequest 없음은 종전과 동일.
+- [수정된 명세](UMAA_Component_SDK_Public_API_v0.8.5.md) · [AutoPilot 예제](../../examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp) · [등록/상속 비교](API_REGISTRATION_VS_INHERITANCE_v0.8.5.md).
+- **검증:** 기존 선언 스케치와 CI 설정을 새 등록 방식에 맞게 변경했으나, 실행 성공 및 실 SDK 헤더/DDS 검증은 아직 증빙되지 않았다.
