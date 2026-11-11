@@ -23,21 +23,31 @@
 
 `CommandProvider::publish`는 Command에 연관된 ExecutionStatus Payload를 발행하는 동사로 제한한다. `ReportProvider::publish`는 일반 Report 데이터 발행이다. `respond`는 Command 상태·결과이며 ExecutionStatus 업무 데이터 대신 사용할 수 없다.
 
+## 1.1 실제 ICD/IDL 명칭과 생성 SDK facade의 구분
+
+**실제 UMAA 6.0 명칭:** MO Service `GlobalVectorControl`, Command `setGlobalVector` 및 Payload `UMAA::MO::GlobalVectorControl::GlobalVectorCommandType`, Response Operation `reportGlobalVectorCommandAck` / `reportGlobalVectorCommandStatus` / `reportGlobalVectorExecutionStatus`; SA Service `GlobalPoseStatus`, Report Operation `reportGlobalPose` 및 Payload `UMAA::SA::GlobalPoseStatus::GlobalPoseReportType`.
+
+위 `UMAA::MO::GlobalVectorControl` 및 `UMAA::SA::GlobalPoseStatus`는 IDL의 **module**, 즉 일반적인 C++ 매핑에서는 네임스페이스다. 아래 `umaa::services::MO::GlobalVectorControl`과 `umaa::services::SA::GlobalPoseStatus`는 사용자 편의를 위해 제안한 **SDK 생성 Service facade 클래스 네임스페이스**이며, `::setGlobalVector`와 `::reportGlobalPose` 등 중첩 Operation 타입 태그도 **SDK가 생성하도록 제안한 이름**이다. 원본 IDL에 그 C++ facade 클래스가 정의된 것은 아니다.
+
+**데이터 타입 계약:** `GlobalVectorCommandType`의 `direction`, `directionMode`, `speed`는 실제 ICD 필드이고, `depthChangePitch`, `elevation`, `endTime`는 optional이다. `GlobalPoseReportType`는 `position`, `attitude`, `course`, `navigationSolution` 등을 갖고, 보고 Key는 `source` (`UMAA::Common::IdentifierType`)이다. 이전의 편의용 `VectorSvc`, `VectorOp` 및 `latitude/longitude/sensorId` 최상위 필드는 실제 ICD 형식이 아니어서 통합 AutoPilot 예제에서 제거했다.
+
+**등록 vs 상속:** [실제 ICD 명칭 기반 비교 및 결론](API_REGISTRATION_VS_INHERITANCE_v0.8.5.md)을 참고한다. 범용 Component는 다중 Service/Role이 흔하므로 **Callback 등록 방식을 기본 UX**로 하고, Service별 Provider/Consumer 구현 클래스 상속을 필수로 요구하지 않는다.
+
 ## 2. 구성과 실행 객체: Component는 Service를 대신하지 않는다
 
 ```cpp
 // 사용자 코드: 해당 Component의 역할과 Hook 연결(설정 시)
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<mo::GlobalVectorControl>()
-      .onCommand<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCommand)
-      .onCancel<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCancel);
-    m.reportConsumer<sa::GlobalPoseStatus>()
-      .onReport<sa::GlobalPoseStatus::Report>(&AutoPilot::onPoseReport);
+    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
+      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCommand)
+      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCancel);
+    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
+      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onPoseReport);
 }
 
 // 런타임에 사용하는 실행 객체: Component::service<S>()에서 획득
-service<mo::GlobalVectorControl>().commandProvider().respond(token, progress);
-service<sa::GlobalPoseStatus>().reportConsumer();  // onReport 등록 시 시작과 함께 구독
+service<umaa::services::MO::GlobalVectorControl>().commandProvider().respond(token, progress);
+service<umaa::services::SA::GlobalPoseStatus>().reportConsumer();  // onReport 등록 시 시작과 함께 구독
 ```
 
 등록기 `m.commandProvider<S>()`와 런타임 `service<S>().commandProvider()`는 동일 역할에 대해 **구성 시점 / 사용 시점**을 구분한다. SDK 내부에서 실질적인 역할 객체를 소유한다. 사용자가 Service를 상속하거나 Provider 클래스를 직접 구현할 의무는 없다. `CommandProvider<S>` 등의 객체에서 실제 DDS 동작은 SDK가 구현한다.
@@ -155,11 +165,11 @@ CommandConsumer<GlobalVectorControl>    CommandProvider<GlobalVectorControl>
 
 ```cpp
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<mo::GlobalVectorControl>()
-      .onCommand<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCommand)
-      .onCancel<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCancel);
-    m.reportConsumer<sa::GlobalPoseStatus>()
-      .onReport<sa::GlobalPoseStatus::Report>(&AutoPilot::onPoseReport);
+    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
+      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCommand)
+      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onVectorCancel);
+    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
+      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onPoseReport);
 }
 ```
 
