@@ -125,3 +125,21 @@ The user attached `UMAA_Public_API_Summary_KO.md` and `umaa_starter_kit_hooks.md
 **Copy-paste prompt for a new session:**
 
 `https://github.com/nssang00/umaa_dev_sdk 저장소의 HANDOFF.md와 v0.8.5 Public API·AutoPilot 4-role 예제를 읽어줘. 네 역할 클래스(CommandProvider/CommandConsumer/ReportProvider/ReportConsumer), onReport 자동 구독/request 동적 구독 계약을 기준으로 설계를 이어가고, ICD 근거와 구현 검증 여부를 구분해줘.`
+
+## 8. 2026-11-11 ICD naming correction and API usability decision
+
+**Source-verified names (user-provided UMAA 6.0 IDL ZIP):**
+- MO Service: `GlobalVectorControl`; operations `setGlobalVector`, `reportGlobalVectorCommandAck`, `reportGlobalVectorCommandStatus`, `reportGlobalVectorExecutionStatus`.
+- MO IDL data structs: `UMAA::MO::GlobalVectorControl::GlobalVectorCommandType`, `GlobalVectorCommandAckReportType`, `GlobalVectorCommandStatusType`, `GlobalVectorExecutionStatusReportType`.
+- SA Service: `GlobalPoseStatus`; operation `reportGlobalPose`; IDL data type `UMAA::SA::GlobalPoseStatus::GlobalPoseReportType`.
+- `GlobalVectorCommandType` has required `direction` (variant), `directionMode`, `speed` (variant), and optional `depthChangePitch`, `elevation`, `endTime`. `GlobalPoseReportType` has `position`, `attitude`, `course`, `navigationSolution` and key `source` (`UMAA::Common::IdentifierType`), not fictional top-level `latitude/longitude/sensorId`.
+
+**Code generation boundary:** `UMAA::MO::GlobalVectorControl` and `UMAA::SA::GlobalPoseStatus` are IDL *modules* (C++ namespaces). The new example's `umaa::services::MO::GlobalVectorControl` and nested `setGlobalVector` operation **type tag** are a **proposed SDK-generated facade convention**, NOT names/types present in the original IDL. Do not claim they are pre-existing RTI-generated C++ class names.
+
+**Decision:** Keep **Callback registration** (`UMAA_COMPONENT(AutoPilot, m)` plus typed `.onCommand<...>(handler)` / `.onReport<...>(handler)`) as the default API. Requiring users to subclass each `CommandProvider/ReportConsumer` and override virtual hooks creates multiple inheritance or extra service classes for a multi-service AutoPilot. A subclass/override adapter may be considered optional for *single* Service apps, but must not become the default.
+
+The original aliases `VectorSvc`, `VectorOp`, `PoseSvc`, `PoseOp` and invented payload fields have been eliminated from `examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp`. Previous archived versions retain historical names.
+
+Read `docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md` for an exact-name map, sourced file inventory, and the alternative designs comparison. v0.8.5 spec section 1.1 explains the namespace separation.
+
+**Validation boundary:** The exact names above were checked against ZIP contents. Reworked examples are still a **C++11 declaration/mock sketch**, not actual generated DDS headers or running hardware code. CI for latest edited example has not been confirmed to pass; compiler/runtime conformance remains pending.
