@@ -75,6 +75,11 @@ struct GlobalPoseStatus
 }
 }} // namespace umaa::services
 
+// Short namespace aliases preserve exact ICD Service/Operation names.
+// These aliases refer to SDK facade types, NOT the original UMAA IDL modules.
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
 // === 1) AutoPilot: Command Provider + Report Consumer =====================
 class AutoPilot : public umaa::Component {
 public:
@@ -120,7 +125,7 @@ public:
 
     // These are APPLICATION hardware callbacks, not required SDK Hook names.
     void hardwareStarted(const umaa::CommandToken& commandToken) {
-        service<umaa::services::MO::GlobalVectorControl>()
+        service<MO::GlobalVectorControl>()
             .commandProvider()
             .respond(commandToken, umaa::CommandProgress::executing());
     }
@@ -129,18 +134,18 @@ public:
         const UMAA::MO::GlobalVectorControl::
             GlobalVectorExecutionStatusReportType& detail)
     {
-        service<umaa::services::MO::GlobalVectorControl>()
+        service<MO::GlobalVectorControl>()
             .commandProvider()
-            .publish<umaa::services::MO::GlobalVectorControl::
+            .publish<MO::GlobalVectorControl::
                 reportGlobalVectorExecutionStatus>(commandToken, detail);
     }
     void hardwareCompleted(const umaa::CommandToken& commandToken) {
-        service<umaa::services::MO::GlobalVectorControl>()
+        service<MO::GlobalVectorControl>()
             .commandProvider()
             .respond(commandToken, umaa::CommandProgress::completed());
     }
     void hardwareStopped(const umaa::CommandToken& commandToken) {
-        service<umaa::services::MO::GlobalVectorControl>()
+        service<MO::GlobalVectorControl>()
             .commandProvider()
             .respond(commandToken, umaa::CommandProgress::canceled());
     }
@@ -162,16 +167,16 @@ private:
     bool requestSafeStop(const umaa::CommandToken&) { return true; }
 };
 
-// Registration uses one Service-level provide/consume builder; Op decides the flow.\nUMAA_COMPONENT(AutoPilot, m) {
-    m.provide<umaa::services::MO::GlobalVectorControl>()
-      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
-          &AutoPilot::onSetGlobalVector);
-    m.provide<umaa::services::MO::GlobalVectorControl>()
-      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
+// Registration uses one Service-level provide/consume builder; Op decides the flow.
+UMAA_COMPONENT(AutoPilot, m) {
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(
+          &AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(
           &AutoPilot::onCancelGlobalVector);
 
-    m.consume<umaa::services::SA::GlobalPoseStatus>()
-      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(
           &AutoPilot::onGlobalPoseReport);
 }
 
@@ -182,9 +187,9 @@ public:
         const UMAA::MO::GlobalVectorControl::GlobalVectorCommandType& command)
     {
         activeCommand_ =
-            service<umaa::services::MO::GlobalVectorControl>()
+            service<MO::GlobalVectorControl>()
                 .commandConsumer()
-                .command<umaa::services::MO::GlobalVectorControl::
+                .command<MO::GlobalVectorControl::
                     setGlobalVector>(command);
     }
     void updateGlobalVector(
@@ -194,7 +199,7 @@ public:
     }
     void cancelGlobalVector() {
         // Submission does not imply the actual Command became CANCELED.
-        service<umaa::services::MO::GlobalVectorControl>()
+        service<MO::GlobalVectorControl>()
             .commandConsumer().cancel(activeCommand_);
     }
     void onGlobalVectorCommandStatus(const umaa::StatusEvent& status) {
@@ -220,24 +225,21 @@ public:
     }
 private:
     umaa::CommandCall<
-        umaa::services::MO::GlobalVectorControl::setGlobalVector>
+        MO::GlobalVectorControl::setGlobalVector>
             activeCommand_;
 };
 
 UMAA_COMPONENT(MissionManager, m) {
-    m.consume<umaa::services::MO::GlobalVectorControl>()
-      .onStatus<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
-          &MissionManager::onGlobalVectorCommandStatus);
-    m.consume<umaa::services::MO::GlobalVectorControl>()
-      .onAck<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
-          &MissionManager::onGlobalVectorCommandAck);
-    m.consume<umaa::services::MO::GlobalVectorControl>()
-      .onExecutionStatus<umaa::services::MO::GlobalVectorControl::
+    m.consume<MO::GlobalVectorControl>()
+      .onStatus<MO::GlobalVectorControl::setGlobalVector>(
+          &MissionManager::onGlobalVectorCommandStatus)
+      .onAck<MO::GlobalVectorControl::setGlobalVector>(
+          &MissionManager::onGlobalVectorCommandAck)
+      .onExecutionStatus<MO::GlobalVectorControl::
           reportGlobalVectorExecutionStatus>(
-              &MissionManager::onGlobalVectorExecutionStatus);
-    m.consume<umaa::services::MO::GlobalVectorControl>()
+              &MissionManager::onGlobalVectorExecutionStatus)
       .onRecoveredCommand<
-          umaa::services::MO::GlobalVectorControl::setGlobalVector>(
+          MO::GlobalVectorControl::setGlobalVector>(
               &MissionManager::onRecoveredGlobalVector);
 }
 
@@ -247,17 +249,17 @@ public:
     void newGlobalPose(
         const UMAA::SA::GlobalPoseStatus::GlobalPoseReportType& report)
     {
-        service<umaa::services::SA::GlobalPoseStatus>()
+        service<SA::GlobalPoseStatus>()
             .reportProvider()
-            .publish<umaa::services::SA::GlobalPoseStatus::
+            .publish<SA::GlobalPoseStatus::
                 reportGlobalPose>(report);
     }
 
     void disposeGlobalPose(const UMAA::Common::IdentifierType& source) {
         // In GlobalPoseReportType, 'source' is the actual @key.
-        service<umaa::services::SA::GlobalPoseStatus>()
+        service<SA::GlobalPoseStatus>()
             .reportProvider()
-            .dispose<umaa::services::SA::GlobalPoseStatus::
+            .dispose<SA::GlobalPoseStatus::
                 reportGlobalPose>(source);
     }
 
@@ -265,15 +267,15 @@ public:
         const std::vector<
             UMAA::SA::GlobalPoseStatus::GlobalPoseReportType>& current)
     {
-        return service<umaa::services::SA::GlobalPoseStatus>()
+        return service<SA::GlobalPoseStatus>()
             .reportProvider()
-            .publish<umaa::services::SA::GlobalPoseStatus::
+            .publish<SA::GlobalPoseStatus::
                 reportGlobalPose>(
                     current, umaa::PublishMode::ReplaceOwnedInstances);
     }
 };
 UMAA_COMPONENT(PositionSensor, m) {
-    m.provide<umaa::services::SA::GlobalPoseStatus>();
+    m.provide<SA::GlobalPoseStatus>();
 }
 
 // === 4) PoseProbe: optional dynamic Report Consumer ======================
@@ -282,9 +284,9 @@ public:
     void startTemporaryMonitoring() {
         // Must not ALSO register an onReport for the same Service/Op here.
         subscription_ =
-            service<umaa::services::SA::GlobalPoseStatus>()
+            service<SA::GlobalPoseStatus>()
                 .reportConsumer()
-                .request<umaa::services::SA::GlobalPoseStatus::
+                .request<SA::GlobalPoseStatus::
                     reportGlobalPose>(
                     [this](const umaa::ReportEvent<
                         UMAA::SA::GlobalPoseStatus::GlobalPoseReportType>& e) {
@@ -299,14 +301,14 @@ private:
             UMAA::SA::GlobalPoseStatus::GlobalPoseReportType>&) {}
 };
 UMAA_COMPONENT(PoseProbe, m) {
-    m.consume<umaa::services::SA::GlobalPoseStatus>();
+    m.consume<SA::GlobalPoseStatus>();
 }
 
 // The original UMAA IDL contains modules and data structs; it does NOT
 // define these generated SDK Service facades or method registration APIs.
 static_assert(
-    umaa::services::MO::GlobalVectorControl::setGlobalVector::role ==
+    MO::GlobalVectorControl::setGlobalVector::role ==
         umaa::OperationRole::Command, "setGlobalVector is a Command");
 static_assert(
-    umaa::services::SA::GlobalPoseStatus::reportGlobalPose::role ==
+    SA::GlobalPoseStatus::reportGlobalPose::role ==
         umaa::OperationRole::Report, "reportGlobalPose is a Report");
