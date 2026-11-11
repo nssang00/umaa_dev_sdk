@@ -1,0 +1,74 @@
+{
+  "version": "v0.8.5",
+  "date": "2026-11-11",
+  "design_status": "USER-FACING API PROPOSAL (not runtime implementation)",
+  "repository": "https://github.com/nssang00/umaa_dev_sdk",
+  "source_inputs": [
+    "UMAA_Public_API_Summary_KO.md (user-supplied, read in conversation)",
+    "umaa_starter_kit_hooks.md (user-supplied, read in conversation)",
+    "UMAA ICD 6.0 EO/MO and other service groups (previously verified in original design task; PDFs not redistributed)",
+    "docs/history/v0.8.4/UMAA_Component_SDK_Public_API_v0.8.4.md"
+  ],
+  "public_api": {
+    "service_template_parameter": "S is generated Service type; Op belongs to S",
+    "role_classes": [
+      "CommandProvider<S>",
+      "CommandConsumer<S>",
+      "ReportProvider<S>",
+      "ReportConsumer<S>"
+    ],
+    "command_provider": [
+      "onCommand<CommandOp>(handler)",
+      "onCancel<CommandOp>(handler)",
+      "respond(token,progress)",
+      "publish<ExecutionOp>(token,payload)"
+    ],
+    "command_consumer": [
+      "command<CommandOp>(payload)",
+      "cancel(CommandCall<CommandOp>)",
+      "onStatus<CommandOp>(handler)",
+      "onAck<CommandOp>(handler)",
+      "onExecutionStatus<ExecutionOp>(handler)",
+      "onRecoveredCommand<CommandOp>(handler)",
+      "CommandCall<CommandOp>::update/get/wait"
+    ],
+    "report_provider": [
+      "publish<ReportOp>(payload)",
+      "publish<ReportOp>(snapshot,ReplaceOwnedInstances)",
+      "dispose<ReportOp>(key)"
+    ],
+    "report_consumer": [
+      "onReport<ReportOp>(handler) automatic subscription",
+      "request<ReportOp>(handler) dynamic Subscription",
+      "getLatest<ReportOp>(key) optional"
+    ],
+    "subscription_duplicate_behavior": "same Component/S/Op static plus dynamic registration results in AlreadySubscribed by default"
+  },
+  "source_vs_impl_notes": {
+    "queryless_request_reply": "request is a high-level dynamic subscription, not a single-shot RPC/one-message query",
+    "command_ack": "ACK reception is not Command execution/completion",
+    "cancel": "submission does not imply CANCELED",
+    "command_accept": "accepted() is not EXECUTING or COMPLETED",
+    "snapshot": "must not dispose instances not owned by Provider",
+    "disclaimer": "These are proposed C++ SDK contracts, not mandated by ICD"
+  },
+  "validation": {
+    "github_files_created": "YES",
+    "readme_handoff_updated": "YES",
+    "v0_8_4_archived_and_original_content_verified": "YES",
+    "github_actions_workflow_configured": "YES - .github/workflows/cxx11-api-sketch.yml",
+    "github_actions_run_status": "UNVERIFIED - available GitHub connector exposed no push-triggered runs or combined statuses at time of inspection",
+    "compiler_run_on_exact_v0_8_5_files": "NOT RUN - local container cannot resolve raw.githubusercontent.com; GitHub Actions check is configured",
+    "real_generated_idl_sdk_compilation": "NOT RUN",
+    "full_139_service_operation_mapping": "NOT RUN",
+    "dds_runtime_icd_conformance": "NOT RUN",
+    "negative_compile_tests": "CONFIGURED IN CI, NOT YET VERIFIED AS PASSED"
+  },
+  "open_risks": [
+    "Unknown/recovered Command state and payload safety",
+    "ReportProvider persisted ownership/Key inventory before ReplaceOwnedInstances",
+    "Cancel liveliness and non-interruptible device policies",
+    "Subscription auto/dynamic duplicate errors, handler lifetime/serialization, RAII",
+    "Real generated Op and Key traits, nested collection/specialization"
+  ]
+}
