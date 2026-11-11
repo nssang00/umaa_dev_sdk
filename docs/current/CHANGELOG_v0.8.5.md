@@ -32,3 +32,11 @@
 ## 검증 한계
 
 실제 생성 IDL 헤더 전체, DDS 런타임, 원격 장비, C++ ABI 호환성은 **검증되지 않음**. 예제는 모델을 표현하는 임시 선언과 Mock 타입을 사용한다.
+
+## 2026-11-11 실제 ICD 이름 기반 예제 개정
+
+- `VectorSvc`, `VectorOp`, `PoseSvc`, `PoseOp` 별칭과 임의의 Payload 필드를 최신 AutoPilot 예제에서 제거.
+- 실제 IDL의 `GlobalVectorControl` / `setGlobalVector` / `GlobalVectorCommandType` 및 `GlobalPoseStatus` / `reportGlobalPose` / `GlobalPoseReportType` 표기 적용.
+- IDL `UMAA::MO::GlobalVectorControl` (module)과 제안 SDK facade `umaa::services::MO::GlobalVectorControl` (class)를 명시적으로 분리.
+- 한 Component가 여러 Service/Role을 담당할 때는 상속·override보다 타입 안전한 Callback 등록을 기본 UX로 권고.
+- 세부 근거: [명칭 및 사용 방식 비교](API_REGISTRATION_VS_INHERITANCE_v0.8.5.md).
