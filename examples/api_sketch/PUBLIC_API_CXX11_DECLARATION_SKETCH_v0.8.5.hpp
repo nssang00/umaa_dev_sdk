@@ -1,5 +1,5 @@
 #pragma once
-// UMAA Public API v0.8.5 C++11 DECLARATION SKETCH.
+// UMAA Public API v0.8.5 (2026-11-12 Improvement A) C++11 DECLARATION SKETCH.
 // For syntax/type demonstration ONLY. No actual DDS, registry or SDK implementation.
 #include <type_traits>
 #include <vector>
@@ -193,13 +193,75 @@ protected:
     template<class S> ServiceHandle<S>& service();
 };
 
+// Service-centric registration builder: available hooks are checked by
+// actual generated Operation role/flow, NOT by ServiceKind.
+template<class S>
+class ProviderBinding {
+public:
+    static_assert(IsService<S>::value, "provide<S> requires a generated Service");
+    template<class Op, class Handler>
+    ProviderBinding& onCommand(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Command> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    template<class Op, class Handler>
+    ProviderBinding& onCancel(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Command> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    // Report-only Provider requires no incoming Hook; declaration alone suffices.
+};
+
+template<class S>
+class ConsumerBinding {
+public:
+    static_assert(IsService<S>::value, "consume<S> requires a generated Service");
+    template<class Op, class Handler>
+    ConsumerBinding& onStatus(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Command> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    template<class Op, class Handler>
+    ConsumerBinding& onAck(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Command> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    template<class Op, class Handler>
+    ConsumerBinding& onExecutionStatus(Handler handler) {
+        CheckOperation<S, Op, OperationRole::ExecutionStatus> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    template<class Op, class Handler>
+    ConsumerBinding& onRecoveredCommand(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Command> check; (void)check;
+        static_assert(Op::flow == FlowKind::CommandResponse, "Command flow required");
+        (void)handler;
+        return *this;
+    }
+    template<class Op, class Handler>
+    ConsumerBinding& onReport(Handler handler) {
+        CheckOperation<S, Op, OperationRole::Report> check; (void)check;
+        static_assert(Op::flow == FlowKind::RequestReplyNoQueryData, "Queryless Report flow required");
+        (void)handler;
+        return *this;
+    }
+};
+
 template<class ComponentType>
 class Registrar {
 public:
-    template<class S> CommandProvider<S>& commandProvider();
-    template<class S> CommandConsumer<S>& commandConsumer();
-    template<class S> ReportProvider<S>& reportProvider();
-    template<class S> ReportConsumer<S>& reportConsumer();
+    template<class S> ProviderBinding<S> provide();
+    template<class S> ConsumerBinding<S> consume();
 };
 } // namespace umaa
 
