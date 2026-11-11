@@ -5,6 +5,10 @@
 - [AutoPilot / MissionManager / PositionSensor / PoseProbe 통합 스케치](AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
 - [기준 설계 명세](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md)
 
+## 실제 ICD 명칭 vs SDK 생성 Facade
+
+이 예제는 `GlobalVectorControl`, `setGlobalVector`, `GlobalVectorCommandType`, `GlobalPoseStatus`, `reportGlobalPose`, `GlobalPoseReportType`의 실제 UMAA 6.0 명칭을 반영한다. `VectorSvc`/`VectorOp`/`PoseSvc`/`PoseOp`는 사용하지 않는다. 원본 IDL의 `UMAA::MO::GlobalVectorControl`은 **module/namespace**이고 `umaa::services::MO::GlobalVectorControl`은 **제안한 SDK 생성 클래스**다. [등록 방식과 상속 방식 비교](../../docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md).
+
 ## 시나리오
 
 ```text
@@ -25,7 +29,7 @@ MissionManager       AutoPilot                     PositionSensor
 
 ## 정확성 제한
 
-이 파일은 타입·사용 시점을 설명하기 위한 **모의 Service/Operation/IDL Payload와 선언 헤더**를 포함한다. GlobalVectorCommand와 GlobalPoseReport의 데모 멤버는 실제 ICD Payload 전체를 반영하지 않는다. DDS 동작, 실제 CommandStatus 상태 머신, 장치 정지, 리스타트 복구 기능은 구현하지 않았다.
+이 파일은 타입·사용 시점을 설명하기 위한 **모의 Service/Operation/IDL Payload와 선언 헤더**를 포함한다. 실제 IDL 타입 이름을 사용하지만 그 구조체는 비어 있거나 일부 필드만 있는 Mock이다. 정식 IDL 생성 타입을 대체하지 않는다. DDS 동작, 실제 CommandStatus 상태 머신, 장치 정지, 리스타트 복구 기능은 구현하지 않았다.
 
 ```sh
 c++ -std=c++11 -Wall -Wextra -pedantic -fsyntax-only AUTOPILOT_FOUR_ROLES_v0.8.5.cpp
