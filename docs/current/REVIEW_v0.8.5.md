@@ -57,3 +57,11 @@
 v0.8.4의 `m.consumer<S>().report<Op>()`는 일반 Report와 CommandStatus를 모두 받았으나, v0.8.5는 **CommandStatus/Ack/ExecutionStatus는 CommandConsumer Hook에**, 일반 Queryless Report는 **ReportConsumer.onReport에** 각각 전용으로 위치시킨다. Payload를 단순 Topic 단위로 유출하지 않고 업무 의도에 맞는 그룹으로 정리한다.
 
 **실제 검증 주의:** 선언 스케치 정적 문법 검사 결과는 `VALIDATION_SUMMARY_v0.8.5.json`이 기록한 상태만 인정한다.
+
+## 5. 2026-11-12 개선안 A 사용자 API 검토
+
+**등록 인터페이스를 두 개로 축소**: `Registrar::provide<S>()`와 `Registrar::consume<S>()`. ProviderBinding은 `onCommand<CommandOp>()`, `onCancel<CommandOp>()`; ConsumerBinding은 `onStatus<CommandOp>()`, `onAck<CommandOp>()`, `onExecutionStatus<ExecOp>()`, `onRecoveredCommand<CommandOp>()`, `onReport<ReportOp>()`를 제공한다. 모든 Operation은 정확한 Service 소속·FlowKind·Role을 확인한다. ReportProvider는 독립 수신 Hook이 없으므로 `provide<S>()`만으로 등록한다.
+
+**정적 등록과 런타임 역할의 분리:** `provide/consume`이 네 Runtime 클래스를 대체하는 것은 아니다. 실제 `command/cancel/respond/publish/dispose/request`는 `service<S>()`의 네 런타임 역할 인터페이스에 남는다. Config 혼합 Service에서는 동일 `S`의 Command/Report Capability가 함께 존재할 수 있다. 신규 AutoPilot 예제는 정확한 ICD 이름을 유지하면서 이 분리를 보여 준다.
+
+**미검증:** Callback 서명 자동 검사, 전체 생성 Service capability, 중복 역할 바인딩, C++11 실제 생성 헤더 컴파일, GitHub Actions CI 성공 및 DDS 런타임. 선언 스케치만으로 이 항목을 완료했다고 주장하지 않는다.
