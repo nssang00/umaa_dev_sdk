@@ -2,9 +2,9 @@
 
 ## In this repository
 
-- Current v0.8.4 Public API contract and review.
-- v0.8.4 illustrative C++11 Component code.
-- Selected historical v0.8.3 / v0.8.1 design and static mapping reviews.
+- Current v0.8.5 Public API contract and review, including the four-role AutoPilot scenario.
+- v0.8.5 illustrative four-role C++11 Component code and earlier v0.8.4 declaration sketch.
+- Historical v0.7–v0.8.4 API design and static mapping reviews.
 - Handoff context and a resume checklist.
 
 ## Not in this public repository
@@ -30,3 +30,7 @@ Why: distribution permissions for the supplied standards/reference packages have
 ## Publication precautions
 
 Do not upload full ICD PDFs, copied standards text, binary zip sources, RTI software, local credentials, or generated files of uncertain license into this public repository without permission.
+
+## Additional source documents used in v0.8.5
+
+The user supplied `UMAA_Public_API_Summary_KO.md` and `umaa_starter_kit_hooks.md` as design references. Their contents were selectively reflected in `docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md` and `docs/current/REVIEW_v0.8.5.md`. The original attachments are not assumed to remain mounted in a future session. These are design suggestions, not authoritative generated C++ API specifications.
