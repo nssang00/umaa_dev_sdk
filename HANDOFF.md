@@ -1,6 +1,6 @@
 # HANDOFF — UMAA Component SDK v0.8.5 Public API
 
-**Updated:** 2026-11-11 Asia/Seoul  
+**Updated:** 2026-11-12 Asia/Seoul  
 **Repository:** https://github.com/nssang00/umaa_dev_sdk · branch `main`  
 **Authoritative spec:** `docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md`  
 **Status:** SDK user-facing **design proposal** only; not the actual working DDS SDK or proof of ICD conformance.
@@ -37,17 +37,21 @@ Read this file and the newest spec before editing anything. Older v0.8.4 example
 
 **Type model:** `Service<Derived, ServiceKind>` generated static Service definition; `ServiceKind::Config/Control/Specs/StatusReport/Other` categorizes but never alone determines flow. Actual generated Operation role/flow/capabilities are authoritative. `CommandProvider<S>` etc. are SDK-owned runtime role interfaces. `Component` owns them through `service<S>().commandProvider()/commandConsumer()/reportProvider()/reportConsumer()`.
 
-**Configuration/Hook syntax:** 
+**Service-centric configuration (2026-11-12 Improvement A):**
 ```cpp
+namespace MO = umaa::services::MO; // proposed SDK facade
+namespace SA = umaa::services::SA; // proposed SDK facade
+
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<mo::GlobalVectorControl>()
-      .onCommand<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCommand);
-    m.commandProvider<mo::GlobalVectorControl>()
-      .onCancel<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCancel);
-    m.reportConsumer<sa::GlobalPoseStatus>()
-      .onReport<sa::GlobalPoseStatus::Report>(&AutoPilot::onPoseReport);
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onCancelGlobalVector);
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onGlobalPoseReport);
 }
 ```
+
+**Registrar bindings:** only `provide<S>()` and `consume<S>()` are current registration entrypoints; they return `ProviderBinding<S>` and `ConsumerBinding<S>`. Hook operation metadata differentiates CommandResponse vs Queryless RequestReply. **Runtime** role objects are still accessed via `service<S>().commandProvider()/commandConsumer()/reportProvider()/reportConsumer()`. Do NOT replace the runtime APIs with a generic `service<S>().provide()` action.
 
 **Actions:** `CommandConsumer<S>::command<CommandOp>(payload[,options])` for a new Source/Session; `CommandCall<Op>::update(newPayload)` for same active Source/Session and newer Timestamp; `CommandConsumer::cancel(call)` submits cancellation, actual CANCELED is later observed. `CommandProvider::respond(token,CommandProgress)` for actual command lifecycle; `CommandProvider::publish<ExecutionOp>(token,payload)` for actual execution telemetry. `ReportProvider::publish<ReportOp>(payload)`, `dispose<ReportOp>(key)`, `publish<ReportOp>(snapshot,ReplaceOwnedInstances)`.
 
@@ -57,7 +61,7 @@ UMAA_COMPONENT(AutoPilot, m) {
 - `CommandConsumer::onStatus<CommandOp>(callback)` is default meaningful status observer; optional `onAck<CommandOp>` (receipt), `onExecutionStatus<ExecutionOp>` (telemetry), `onRecoveredCommand<CommandOp>` (recovery continue/cancel business decision). `onResponse()` umbrella hook is **not part of current baseline**.
 - `ReportConsumer::onReport<ReportOp>(callback)` is for Data/Disposed, Key, Source, Timestamp. `onReply()` replaced with `onReport()`.
 
-**Subscriptions:** `m.reportConsumer<S>().onReport<Op>(handler)` creates an automatic subscription on `Component` start and destroys it on stop. Alternatively, without static registration for same S/Op, call `service<S>().reportConsumer().request<Op>(handler)` to get a dynamic RAII `Subscription`. **No implicit duplicate**: both for same S/Op default to `AlreadySubscribed`. `request` is *NOT* single-shot RPC because standard UMAA Request/Reply is Queryless. ReportProvider doesn't require `onRequest`.
+**Subscriptions:** `m.consume<S>().onReport<Op>(handler)` creates an automatic subscription on `Component` start and destroys it on stop. Alternatively, without static registration for same S/Op, call `service<S>().reportConsumer().request<Op>(handler)` to get a dynamic RAII `Subscription`. **No implicit duplicate**: both for same S/Op default to `AlreadySubscribed`. `request` is *NOT* single-shot RPC because standard UMAA Request/Reply is Queryless. ReportProvider doesn't require `onRequest`.
 
 **Important exceptions:** `Config` may mix multiple Command and Report operations. Neither ServiceKind suffix nor one-Command shortcut is sufficient for all Services. Use precise `Op` type metadata. Exactly the same Service may be both Provider and Consumer in one Component.
 
@@ -143,3 +147,9 @@ The original aliases `VectorSvc`, `VectorOp`, `PoseSvc`, `PoseOp` and invented p
 Read `docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md` for an exact-name map, sourced file inventory, and the alternative designs comparison. v0.8.5 spec section 1.1 explains the namespace separation.
 
 **Validation boundary:** The exact names above were checked against ZIP contents. Reworked examples are still a **C++11 declaration/mock sketch**, not actual generated DDS headers or running hardware code. CI for latest edited example has not been confirmed to pass; compiler/runtime conformance remains pending.
+
+## 9. 2026-11-12 Improvement A — register Services by provide/consume
+
+**Current source API:** replace the earlier v0.8.5 registration methods `m.commandProvider<S>()`, `m.commandConsumer<S>()`, `m.reportProvider<S>()`, `m.reportConsumer<S>()` with `m.provide<S>()` and `m.consume<S>()`. The four `CommandProvider/Consumer` and `ReportProvider/Consumer` runtime classes **remain**; `Component::service<S>().*` calls do not change. The new registrar builders are `ProviderBinding<S>` and `ConsumerBinding<S>`. Existing callbacks `onCommand`, `onCancel`, `onStatus`, `onAck`, `onExecutionStatus`, `onRecoveredCommand`, `onReport` keep their name and per-Operation binding.
+
+Read `docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md` §2 and `examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp`. Their actual ICD names are `GlobalVectorControl::setGlobalVector`, `GlobalPoseStatus::reportGlobalPose`, etc., via proposed `umaa::services::MO/SA` generated facades. C++11 sketch and CI workflow were updated; **successful CI run and production SDK binary compilation are not verified**. Test wrong Service/Operation/flow registrations and Callback signature typing as part of the next P1 implementation.
