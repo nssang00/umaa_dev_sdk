@@ -4,7 +4,7 @@
 // PROPOSED SDK-generated wrappers, NOT namespaces/classes in the original IDL.
 // The original IDL declares 'UMAA::MO::GlobalVectorControl' and
 // 'UMAA::SA::GlobalPoseStatus' as modules (C++ namespaces).
-// This file uses deliberately INCOMPLETE IDL-shaped mock structs for syntax only;
+// 2026-11-12: registration API now m.provide<S>() / m.consume<S>().\n// This file uses deliberately INCOMPLETE IDL-shaped mock structs for syntax only;
 // actual generated DDS/IDL C++ types must replace them in a real application.
 // No actual DDS, ICD state machine or hardware code is implemented here.
 #include "PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp"
@@ -162,15 +162,15 @@ private:
     bool requestSafeStop(const umaa::CommandToken&) { return true; }
 };
 
-UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
+// Registration uses one Service-level provide/consume builder; Op decides the flow.\nUMAA_COMPONENT(AutoPilot, m) {
+    m.provide<umaa::services::MO::GlobalVectorControl>()
       .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
           &AutoPilot::onSetGlobalVector);
-    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
+    m.provide<umaa::services::MO::GlobalVectorControl>()
       .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
           &AutoPilot::onCancelGlobalVector);
 
-    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
+    m.consume<umaa::services::SA::GlobalPoseStatus>()
       .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(
           &AutoPilot::onGlobalPoseReport);
 }
@@ -225,17 +225,17 @@ private:
 };
 
 UMAA_COMPONENT(MissionManager, m) {
-    m.commandConsumer<umaa::services::MO::GlobalVectorControl>()
+    m.consume<umaa::services::MO::GlobalVectorControl>()
       .onStatus<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
           &MissionManager::onGlobalVectorCommandStatus);
-    m.commandConsumer<umaa::services::MO::GlobalVectorControl>()
+    m.consume<umaa::services::MO::GlobalVectorControl>()
       .onAck<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
           &MissionManager::onGlobalVectorCommandAck);
-    m.commandConsumer<umaa::services::MO::GlobalVectorControl>()
+    m.consume<umaa::services::MO::GlobalVectorControl>()
       .onExecutionStatus<umaa::services::MO::GlobalVectorControl::
           reportGlobalVectorExecutionStatus>(
               &MissionManager::onGlobalVectorExecutionStatus);
-    m.commandConsumer<umaa::services::MO::GlobalVectorControl>()
+    m.consume<umaa::services::MO::GlobalVectorControl>()
       .onRecoveredCommand<
           umaa::services::MO::GlobalVectorControl::setGlobalVector>(
               &MissionManager::onRecoveredGlobalVector);
@@ -273,7 +273,7 @@ public:
     }
 };
 UMAA_COMPONENT(PositionSensor, m) {
-    m.reportProvider<umaa::services::SA::GlobalPoseStatus>();
+    m.provide<umaa::services::SA::GlobalPoseStatus>();
 }
 
 // === 4) PoseProbe: optional dynamic Report Consumer ======================
@@ -299,7 +299,7 @@ private:
             UMAA::SA::GlobalPoseStatus::GlobalPoseReportType>&) {}
 };
 UMAA_COMPONENT(PoseProbe, m) {
-    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>();
+    m.consume<umaa::services::SA::GlobalPoseStatus>();
 }
 
 // The original UMAA IDL contains modules and data structs; it does NOT
