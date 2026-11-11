@@ -9,6 +9,7 @@ The goal is a high-level UMAA ICD 6.0 SDK built around the application's **busin
 - [HANDOFF.md](HANDOFF.md) — durable context, decisions, open issues and exact session-resume checklist
 - [v0.8.5 Public API](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md) — **authoritative current spec**
 - [Review and limitations](docs/current/REVIEW_v0.8.5.md)
+- [ICD-exact naming and registration vs inheritance](docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md)
 - [Change log](docs/current/CHANGELOG_v0.8.5.md)
 - [AutoPilot four-role example](examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
 - [C++11 declaration sketch](examples/api_sketch/PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp)
