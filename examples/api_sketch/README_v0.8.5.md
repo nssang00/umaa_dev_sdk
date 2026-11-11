@@ -9,6 +9,23 @@
 
 이 예제는 `GlobalVectorControl`, `setGlobalVector`, `GlobalVectorCommandType`, `GlobalPoseStatus`, `reportGlobalPose`, `GlobalPoseReportType`의 실제 UMAA 6.0 명칭을 반영한다. `VectorSvc`/`VectorOp`/`PoseSvc`/`PoseOp`는 사용하지 않는다. 원본 IDL의 `UMAA::MO::GlobalVectorControl`은 **module/namespace**이고 `umaa::services::MO::GlobalVectorControl`은 **제안한 SDK 생성 클래스**다. [등록 방식과 상속 방식 비교](../../docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md).
 
+## 개선안 A — Service 중심 등록
+
+```cpp
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
+UMAA_COMPONENT(AutoPilot, m) {
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onCancelGlobalVector);
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onGlobalPoseReport);
+}
+```
+
+`m.provide/consume`는 **구성용 바인딩**이다. 실제 명령 상태 응답은 `service<MO::GlobalVectorControl>().commandProvider().respond(...)`, 실제 Report 발행은 `service<SA::GlobalPoseStatus>().reportProvider().publish<SA::GlobalPoseStatus::reportGlobalPose>(...)`에서 수행한다. ServiceKind만으로 Flow가 결정되는 것이 아니라 실제 Operation의 메타데이터로 타입 검사한다.
+
 ## 시나리오
 
 ```text
