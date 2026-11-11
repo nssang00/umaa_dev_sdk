@@ -1,32 +1,46 @@
-# UMAA Component SDK — Public API Design
+# UMAA Component SDK — C++11 User Public API
 
-> **Current design baseline:** v0.8.4 (2026-11-11). This repository currently contains **design specifications, review artifacts, and illustrative C++11 API sketches**, not a production UMAA SDK.
+**Design baseline: v0.8.5 (2026-11-11)** · Status: **public API proposal**, not production implementation or proven ICD conformity.
 
-## Start here
+The goal is a high-level UMAA ICD 6.0 SDK built around the application's **business events and actions**, with DDS Topics, ACK/CommandStatus state machinery, Queryless subscriptions, correlation, liveliness and collection/specialization internals hidden.
 
-1. **[HANDOFF.md](HANDOFF.md)** — session-independent project context, decisions, sources, known gaps, and exact resume plan.
-2. **[docs/current/UMAA_Component_SDK_Public_API_v0.8.4.md](docs/current/UMAA_Component_SDK_Public_API_v0.8.4.md)** — authoritative current user-facing API proposal.
-3. **[docs/current/REVIEW_v0.8.4.md](docs/current/REVIEW_v0.8.4.md)** — user-scenario coverage, counterexamples, and open issues.
-4. **[examples/api_sketch/](examples/api_sketch/)** — C++11 syntax sketches; not an SDK implementation.
-5. **[docs/history/](docs/history/)** — previous specifications and ICD/IDL static-analysis documents.
+## Read first
 
-## Design objective
+- [HANDOFF.md](HANDOFF.md) — durable context, decisions, open issues and exact session-resume checklist
+- [v0.8.5 Public API](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md) — **authoritative current spec**
+- [Review and limitations](docs/current/REVIEW_v0.8.5.md)
+- [Change log](docs/current/CHANGELOG_v0.8.5.md)
+- [AutoPilot four-role example](examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
+- [C++11 declaration sketch](examples/api_sketch/PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp)
+- [Prior versions](docs/history/) — v0.7 through v0.8.4; do not treat as current API
+- [Source inventory](docs/SOURCE_INVENTORY.md)
 
-Implement UMAA ICD 6.0 internally while exposing only user-relevant business events, decisions and operations externally. **Do not mirror DDS topic/control mechanics into separate public handlers.**
+## Four role classes
 
-- Service: `umaa::Service<Derived, ServiceKind>`; kinds `Config`, `Control`, `Specs`, `StatusReport`, with `Other` for exceptions.
-- Component declares roles: `m.provider<Service>()` / `m.consumer<Service>()`.
-- Provider/Consumer handlers are attached per actual ICD operation, not by service-name convention alone.
-- Eight business verbs remain: `command`, `cancel` (provider cancel handler), `report`, `send`, `cancel` (consumer action), `respond`, `publish`, `dispose`.
-- SDK handles ACK and CommandStatus flow, queryless subscription, IDs, DDS topics, synchronization, and protocol housekeeping. Application supplies business outcomes and actual execution/report data.
-- No per-kind handler base class or `m.collection` / `m.specialized` requirement.
+| Flow | Role API | User actions | Hooks |
+|---|---|---|---|
+| Command/Response | `CommandProvider<S>` | `respond`, `publish<ExecutionOp>` | `onCommand`, `onCancel` |
+| Command/Response | `CommandConsumer<S>` | `command`, `cancel`; `CommandCall<Op>::update/get/wait` | `onStatus`, optional `onAck`, `onExecutionStatus`, `onRecoveredCommand` |
+| Queryless Request/Reply | `ReportProvider<S>` | `publish`, `dispose`, snapshot `publish` | none by default |
+| Queryless Request/Reply | `ReportConsumer<S>` | optional dynamic `request<Op>(handler)`, `getLatest` | `onReport<Op>(handler)` (starts auto-subscription at Component start) |
 
-## Status
+`S` is a generated **Service definition** (e.g., `mo::GlobalVectorControl`), `Op` is a generated **Operation type**. The four classes are **runtime role interfaces**, not four different Service subclasses. For Config services, Command and Report role APIs can coexist. Actual supported roles are determined by ICD Operation metadata, not Service name suffixes.
 
-C++11 API sketch syntax and some invalid-registration tests were checked in the design artifacts. Full generated type compilation, all-service user scenario verification, DDS integration, and ICD runtime conformance **have not been established**. See [handoff](HANDOFF.md).
+**Subscription decision:** `onReport<Op>(handler)` is static auto-subscription; `request<Op>(handler)` is dynamic subscription with a `Subscription` handle. The same Component must not use both for identical S/Op without an explicit future extension; default result is `AlreadySubscribed`.
 
-## Source-material policy
+## AutoPilot example structure
 
-The user-supplied ICD PDFs and IDL archive are **not mirrored here**; redistribution permission has not been verified. `HANDOFF.md` records the source inventory and how to reattach the source materials in a new session.
+```text
+MissionManager (CommandConsumer) --> AutoPilot (CommandProvider)
+                                 --> AutoPilot (ReportConsumer) <-- PositionSensor (ReportProvider)
+```
 
-_This is a design/handoff migration, not a claim that an implementation has shipped._
+The example is **illustrative only**. Its mock IDL payloads, declarations and empty hardware methods do **not** implement a real SDK or DDS runtime.
+
+## Validation truth
+
+See `docs/current/VALIDATION_SUMMARY_v0.8.5.json` for exact verified vs unverified checks. A C++11 syntax-only sketch is not evidence of full UMAA ICD compliance. Full generated Service compile coverage, actual DDS data exchange, provider restart cleanup and command recovery remain open.
+
+## Source material / rights
+
+The earlier user-provided UMAA ICD PDF manuals and the expanded 594-IDL ZIP are **not included** in this public repository because their redistribution rights have not been checked. See [source inventory](docs/SOURCE_INVENTORY.md); new sessions should use attached originals when exact primary-source validation is needed.
