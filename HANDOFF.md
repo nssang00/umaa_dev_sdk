@@ -1,130 +1,127 @@
-# HANDOFF — UMAA Component SDK Public API
+# HANDOFF — UMAA Component SDK v0.8.5 Public API
 
-**Updated:** 2026-11-11 (Asia/Seoul)  
-**Repository:** https://github.com/nssang00/umaa_dev_sdk  
-**Resume branch:** `main`; read this file and `docs/current/UMAA_Component_SDK_Public_API_v0.8.4.md` first.  
-**Current baseline:** **v0.8.4 USER-FACING API DESIGN**. It is a design contract, not implemented SDK runtime or proven ICD conformance.
+**Updated:** 2026-11-11 Asia/Seoul  
+**Repository:** https://github.com/nssang00/umaa_dev_sdk · branch `main`  
+**Authoritative spec:** `docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md`  
+**Status:** SDK user-facing **design proposal** only; not the actual working DDS SDK or proof of ICD conformance.
 
-## 0. One-minute resumption brief
+## 0. Session resumption: read this first
 
-The user is designing a **minimal, universal C++11 UMAA Component SDK Public API** that covers the user-relevant duties in UMAA ICD 6.0, while completely hiding internal DDS/Flow-Control implementation (the **iceberg model**). Do **not** treat ICD Topic counts or DDS protocol steps as reasons to expand the Public API. Distinguish: (1) business events and choices the application must see, (2) the business operations the application must invoke, and (3) SDK-internal protocol work that should never leak into user handlers. User prefers objective, evidence-based Korean responses, with conclusions first.
+The user wants a **minimal, universal C++11 UMAA Component SDK API** that covers the user developer's business tasks, with rigorous UMAA 6.0 protocol implementation hidden inside the SDK (the **iceberg principle**). The service is not a separate user-written subclass; users write a `umaa::Component`, register business callbacks, and call Service runtime role interfaces. The user prefers precise Korean, conclusion first, distinctions between evidence vs API design vs unverified assumptions.
 
-**Latest decision:** Service is a generated lightweight type inheriting `umaa::Service<Derived, ServiceKind>`. The four conventional kinds are `Config`, `Control`, `Specs`, `StatusReport` (plus `Other` fallback). The Component explicitly binds each service as `m.provider<S>()` or `m.consumer<S>()`. Within the binding, handlers are registered **by actual Operation**, not by service kind. Do not introduce four user-facing ServiceType handler base classes. Provider and Consumer are roles of a Component relative to a Service, not subclasses of that Service.
+**Most recent design decision v0.8.5:** **2 flows × 2 roles = four classes** with user-level functions and Hooks. No additional ControlServiceProvider/ConfigServiceConsumer/SpecsServiceProvider variants. The class template argument `S` is the generated **Service** type; each individual Operation is a method-level `<Op>`.
 
-## 1. Authoritative current documents
+```text
+Command/Response   CommandProvider<S>  : onCommand, onCancel, respond, publish<ExecutionOp>
+                   CommandConsumer<S>  : command, cancel, onStatus, onAck?, onExecutionStatus?, onRecoveredCommand?
+Queryless R/R      ReportProvider<S>   : publish, dispose, publish(snapshot, ReplaceOwnedInstances)
+                   ReportConsumer<S>   : onReport (auto-subscribe), request(handler) (dynamic), getLatest?
+```
 
-- `README.md` — quick entry.
-- `docs/current/UMAA_Component_SDK_Public_API_v0.8.4.md` — **authoritative current API contract**.
-- `docs/current/REVIEW_v0.8.4.md` — review cases and remaining gaps.
-- `docs/current/CHANGELOG_v0.8.4.md` — version delta.
-- `examples/api_sketch/EXAMPLE_COMPONENT_CXX11_SKETCH_v0.8.4.cpp` — example, NOT runtime implementation.
-- `docs/history/v0.8.3/` — prior Command/Cancel design contracts, historical not authoritative.
-- `docs/history/v0.8.1/` — static ICD/IDL coverage reviews, historical factual audit, not an API compile test.
-- `docs/SOURCE_INVENTORY.md` — provenance, what is intentionally NOT in this public repo.
+Read this file and the newest spec before editing anything. Older v0.8.4 examples use a **different** `m.provider/m.consumer` API and must not be copied verbatim.
 
-If any docs disagree, **v0.8.4 full Public API spec wins**; where unimplemented, mark as proposed rather than present as existing.
+## 1. Current essential artifacts
 
-## 2. Key Public API decisions (keep stable unless counterexample)
+- `README.md` — project entry.
+- `docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md` — current contract.
+- `docs/current/REVIEW_v0.8.5.md` — scenario matrix + limitations.
+- `docs/current/CHANGELOG_v0.8.5.md` — migration mappings from v0.8.4.
+- `docs/current/VALIDATION_SUMMARY_v0.8.5.json` — exact evidence of tests / not-run.
+- `examples/api_sketch/PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp` — mock C++11 declarations only.
+- `examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp` — example across four role classes.
+- `examples/api_sketch/README_v0.8.5.md` — scenario and how to syntax-check.
+- `docs/history/v0.8.4/` — **archived full v0.8.4 spec**, review, changelog and validation; earlier v0.7/v0.8.x history retained.
+- `docs/SOURCE_INVENTORY.md` — source materials intentionally not redistributed.
 
-### Service / Role / Operation
+## 2. User API architecture (keep stable unless evidence demands change)
 
+**Type model:** `Service<Derived, ServiceKind>` generated static Service definition; `ServiceKind::Config/Control/Specs/StatusReport/Other` categorizes but never alone determines flow. Actual generated Operation role/flow/capabilities are authoritative. `CommandProvider<S>` etc. are SDK-owned runtime role interfaces. `Component` owns them through `service<S>().commandProvider()/commandConsumer()/reportProvider()/reportConsumer()`.
+
+**Configuration/Hook syntax:** 
 ```cpp
-namespace umaa {
-enum class ServiceKind { Config, Control, Specs, StatusReport, Other };
-template<class Derived, ServiceKind Kind> class Service;
-}
-namespace mo {
-class GlobalVectorControl
-    : public umaa::Service<GlobalVectorControl, umaa::ServiceKind::Control> {
-public:
-    struct SetGlobalVector;
-    struct CommandAck;
-    struct CommandStatus;
-    struct ExecutionStatus;
-};
-}
 UMAA_COMPONENT(AutoPilot, m) {
-    m.provider<mo::GlobalVectorControl>()
-       .command<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVector)
-       .cancel<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onCancel);
+    m.commandProvider<mo::GlobalVectorControl>()
+      .onCommand<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCommand);
+    m.commandProvider<mo::GlobalVectorControl>()
+      .onCancel<mo::GlobalVectorControl::SetGlobalVector>(&AutoPilot::onVectorCancel);
+    m.reportConsumer<sa::GlobalPoseStatus>()
+      .onReport<sa::GlobalPoseStatus::Report>(&AutoPilot::onPoseReport);
 }
 ```
 
-This is **illustrative interface shape**, not necessarily compiled against actual generated headers. Provider-only Specs/Status services can bind without any `.command` handler. One Component may be both Provider and Consumer for the same Service. Service naming convention can have exceptions: rely on exact ICD Operation metadata, not suffix-only inference. Single-Command Service shorthand `m.command<Service>` can be allowed only when unambiguous; role-scoped form is preferred.
+**Actions:** `CommandConsumer<S>::command<CommandOp>(payload[,options])` for a new Source/Session; `CommandCall<Op>::update(newPayload)` for same active Source/Session and newer Timestamp; `CommandConsumer::cancel(call)` submits cancellation, actual CANCELED is later observed. `CommandProvider::respond(token,CommandProgress)` for actual command lifecycle; `CommandProvider::publish<ExecutionOp>(token,payload)` for actual execution telemetry. `ReportProvider::publish<ReportOp>(payload)`, `dispose<ReportOp>(key)`, `publish<ReportOp>(snapshot,ReplaceOwnedInstances)`.
 
-### Eight business verbs (unchanged)
+**Hooks:** 
+- `CommandProvider::onCommand<CommandOp>(callback)` sees New/Updated/Recovered via `CommandInfo`, returns `CommandDecision` (accepted / rejected / deferred / resume); don't treat accepted as EXECUTING or COMPLETED.
+- `CommandProvider::onCancel<CommandOp>(callback)` only for active Commands; cannotCancel/deferred/canceled distinguish actual hardware stopping.
+- `CommandConsumer::onStatus<CommandOp>(callback)` is default meaningful status observer; optional `onAck<CommandOp>` (receipt), `onExecutionStatus<ExecutionOp>` (telemetry), `onRecoveredCommand<CommandOp>` (recovery continue/cancel business decision). `onResponse()` umbrella hook is **not part of current baseline**.
+- `ReportConsumer::onReport<ReportOp>(callback)` is for Data/Disposed, Key, Source, Timestamp. `onReply()` replaced with `onReport()`.
 
-1. Handler registration `command`, `cancel` (Provider), `report` (Consumer).
-2. Operations `send`, `cancel` (Consumer action), `respond`, `publish`, `dispose`.
+**Subscriptions:** `m.reportConsumer<S>().onReport<Op>(handler)` creates an automatic subscription on `Component` start and destroys it on stop. Alternatively, without static registration for same S/Op, call `service<S>().reportConsumer().request<Op>(handler)` to get a dynamic RAII `Subscription`. **No implicit duplicate**: both for same S/Op default to `AlreadySubscribed`. `request` is *NOT* single-shot RPC because standard UMAA Request/Reply is Queryless. ReportProvider doesn't require `onRequest`.
 
-`provider`/`consumer` are **two configuration functions**, not new DDS/business verbs. Avoid `m.config`, `m.control`, `m.collection`, `m.specialized`, `m.execution` as required user-facing verbs. `onStart/onStop` are optional lifecycle hooks.
+**Important exceptions:** `Config` may mix multiple Command and Report operations. Neither ServiceKind suffix nor one-Command shortcut is sufficient for all Services. Use precise `Op` type metadata. Exactly the same Service may be both Provider and Consumer in one Component.
 
-### Hiding protocol mechanics
+**Data model:** `LargeSet<T>/LargeList<T>` with stable element IDs, `add/set/remove/clear/replaceAll`, List `insert/move`, `state` Complete/Incomplete/Invalid; `Specialized<Base>` with base/set<T>/is<T>/as<T>/state Ready/Incomplete/Unsupported/Invalid. Payload API not new wire communication classes. Generated Optional, union, Key/CompositeKey must preserve IDL semantics.
 
-SDK handles DDS topics, readers/writers, queryless request/reply subscription, ACK and ordinary CommandStatus protocol transitions, Source/Session/Timestamp correlations, dispose cancellation, large-collection synchronization, specialization linkage, provider/consumer wire state. Business data and real equipment control, actual ExecutionStatus values and user decisions remain application responsibilities.
+## 3. AutoPilot four-role scenario
 
-### Required user-visible data contracts
+```text
+MissionManager        AutoPilot                        PositionSensor
+CommandConsumer<S> -> CommandProvider<S>
+  command(cmd)          onVectorCommand(cmd, info)
+  onStatus(status)   <-  respond(token, progress)
+  cancel(call)       ->  onVectorCancel(info)
 
-- `CommandInfo`: New/Updated/Recovered, source, destination, session, timestamp, optional prior status, opaque `CommandToken`. Command update uses same Source+Session and newer timestamp; never invent wire revision ID.
-- `CommandDecision`: validate/accept/reject/defer and **resume** a recovered in-progress command without reverting its state. `respond(token,result)` handles async outcome.
-- `CancelInfo`/`CancelDecision`: cancellation *request* differs from successful actual stop; `cannotCancel` may continue and later complete. Sender's `cancel(call)` result must not claim CANCELED until observed.
-- `CommandCall`: ACK/status/ExecutionStatus, final outcome vs timeout vs unknown; optional raw `m.report<Op>` for detailed reports.
-- `ReportEvent<T>`: Data/Disposed, key, source, timestamp, optional completeness; `publish` and `dispose`.
-- `LargeSet<T>`/`LargeList<T>`: stable element IDs, atomic update completion, empty, deletion, order.
-- `Specialized<T>`: type identity, missing/incomplete/unsupported states, link synchronization and disposal.
-- Lossless C++11 representation of IDL optional fields, keys (including composite) and unions.
+                      ReportConsumer<PoseSvc>        ReportProvider<PoseSvc>
+                      onPoseReport(e)              <- publish(pose)
+                      Data/Disposed                <- dispose(key)
+```
 
-## 3. Verified ICD facts and design distinctions
+AutoPilot has **two roles** in its Component; the other two are assigned to MissionManager and PositionSensor. A separate `PoseProbe` demonstrates dynamic `request(handler)` and `Subscription.close()`. Do not register `onReport` and `request` for the same Component/S/Op.
 
-- EO ICD §3.4/Table 3 — Config, Control, Specs, Status/Report are a **convention**; not every Service has every standard Operation. Config can mix command and report.
-- MO ICD §6.1.5/Table 22–26 — `GlobalVectorControl` has `setGlobalVector`, CommandAck, CommandStatus, ExecutionStatus; cancel is DDS disposal model, not a separate reply message.
-- EO ICD §5.1.2.1–2 — Provider/Consumer must handle existing commands on restart. Business decision to resume, fail, continue observing, or cancel is user-visible.
-- EO ICD §5.1.4.2 — updated Command same source+session, newer timestamp; active command restarts flow.
-- EO ICD §5.1.4.5 — cancellation is a request; may end CANCELED or continue to COMPLETED; connection/liveliness loss has cancellation requirements.
-- EO ICD §5.2.1 — queryless Report service is publish/subscribe; Provider restarts by refreshing or disposing stale reports.
-- EO ICD §3.8–3.9 — Large Collections and Specializations have identity and atomic synchronization requirements; surface stable typed data, not DDS machinery.
-- SDK `Service<Derived,Kind>`, Provider/Consumer builders, `CommandToken`, `resume()`, `publish<ExecOp>(token,payload)`, `ReplaceOwnedInstances` are **SDK UX design proposals**, NOT C++ APIs required by ICD.
+The C++ example has intentionally **mock** `mo::GlobalVectorControl`, `sa::GlobalPoseStatus` and IDL-like Payloads, not real generated headers or device control. Illustrative hardware callbacks are application functions, not extra SDK Hooks.
 
-## 4. Review snapshot / validation truth
+## 4. Evidence: facts vs design choices vs pending work
 
-Latest v0.8.4 review evaluated 20 user scenarios (covered by proposed design or explicitly outstanding). Representative C++11 **declaration sketch** was syntax-checked and bad role / wrong service / bad service type registration examples rejected. **Not done:** compile with production SDK/generated real IDL headers, all-service compile coverage, real DDS behavior, true ICD conformance.
+**Previously verified ICD facts from user-provided documents (not rechecked this migration):**
+- EO §3.4: Config/Control/Specs/Status or Report convention with exceptions.
+- EO §5.1 Command: Source/Session correlation, status/ack, update with newer Timestamp, cancel and recovery.
+- EO §5.2.1: normal Queryless Request/Reply data subscription/Report/disposal.
+- EO §3.8/3.9: Large Collection identity/synchronization; Generalization/Specialization linkage.
+- MO §6.1.5: GlobalVectorControl setGlobalVector, CommandAck, CommandStatus, ExecutionStatus and command cancel semantics.
 
-Previous static source audit, including experimental ICDs: **139 unique Services**, **314 unique Topic Operations**, **311 exact IDL Topic matches**. Three experimental ICD/IDL discrepancies were documented:
-- `UMAA::SEM::AcousticInterferenceStatus::AcousticSelfNoiseInterferenceStatusType`;
-- `UMAA::EO::FinsStatus::FinsStatusType`;
-- `UMAA::EO::PropulsorsStatus::PropulsorsStatusType`.
-They are `@nested` in supplied IDL without corresponding top-level Topic constants. These are **source mapping discrepancies, not demonstrated Public API gaps**. Standard 54 Services / 114 Operations matched in earlier audit. These are static counts, not runtime conformance evidence.
+**SDK design choices, NOT mandated C++ ICD APIs:** four template classes, `command()` instead of `send()`, `onReport` auto-subscription, `request(handler)` dynamic subscription and `AlreadySubscribed`, `CommandCall<Op>`, `resume()`, `ReplaceOwnedInstances`, `onRecoveredCommand`, typed `onExecutionStatus`.
 
-## 5. Open issues — next session backlog
+**Prior static audit notes:** supplied IDL archive contained 594 IDL files; source audit counted 139 unique Services and 314 unique topic Operations, with 311 exact IDL topic matches. Three experimental `@nested` vs top-level Topic differences were recorded (SEM AcousticSelfNoiseInterferenceStatusType, EO FinsStatusType, EO PropulsorsStatusType). **These are not proven public API gaps**. Standard-only audit: 54 Services, 114 Operations. Source files were not redistributed.
 
-**P0**: Validate `publish<ReportOp>(snapshot, ReplaceOwnedInstances)` can clean only owned pre-restart keyed instances safely; handle absence of owned-key inventory and failure result.
+**Validation:** `VALIDATION_SUMMARY_v0.8.5.json` is the truth. A mock C++11 syntax check alone does not certify runtime correctness or SDK codegen coverage.
 
-**P0**: Define safe user-visible semantics when recovered Command's previous state, payload, or version association is unavailable. Never turn Unknown into success or double-execute a command.
+## 5. Open issues / next-step backlog
 
-**P1**: Cancellation policy when handler missing/noninterruptible, especially on Consumer liveliness loss. Preserve business safety decision without falsely claiming cancel.
+**P0:**
+1. Report Provider restart: determine persisted owned-key inventory, ensure `publish(snapshot, ReplaceOwnedInstances)` never deletes another Provider's data, and define failure when ownership is unknown.
+2. Existing Command recovery: if previous Payload, Status, Session association, timestamp, or token state is unknown, expose Unknown and avoid false successful resume/double execution. Choose safe default continue/cancel policy.
+3. C++11 actual generated Service types: compile representative Control/Config/Specs/Status and verify correct Operation/flow role binding (all 139 Services eventually).
 
-**P1**: Validate ServiceKind/roles/actual Operations against all 139 Service definitions (including odd Config multi-Command cases) using generated type metadata; evaluate whether bare Provider binding suffices for Report-only service and clear service completeness reporting.
+**P1:**
+4. Command cancellation: onCancel omission vs mandatory safety stop for long-running commands, liveliness loss, cancel refusal and terminal outcome.
+5. Subscription semantics: RAII/close, auto vs dynamic duplicate error, callback lifetime, retries, thread-affinity, shutdown.
+6. Completion/status error model: ACK vs CommandStatus, old token updates, timeout vs remote FAILED, unsolicited Report disposed.
+7. C++11 negative static compilation tests and DDS integration scenarios.
+8. Large Collection and Specialized<T> nested data behavior against real generated IDL.
 
-**P1**: Compile representative real generated C++11 API examples and negative checks, then run DDS conformance/integration separately.
+## 6. Sources and publication policy
 
-**P1**: Reconcile the three experimental @nested/Topic discrepancies against authoritative sources without guessing missing DDS topics.
+The user attached `UMAA_Public_API_Summary_KO.md` and `umaa_starter_kit_hooks.md` as design inputs to the November 11 conversation; core decisions are **recorded in current spec and this Handoff**. Original UMAA ICD 6.0 PDFs (EO/MO/MM/SA/SEM/SO, EXP and CO-EXP) and the `umaa-6.0-idl-with-exp-services.zip` source bundle (~594 files) are **not in this public GitHub repo**: redistribution rights were not checked. Their former `/mnt/data` paths are ephemeral and not valid across sessions. Request original attachments again to verify exact clauses or regenerate real IDL code.
 
-Do **not** add a new user-facing top-level verb unless a real user scenario cannot be represented with existing eight + role declarations + typed options. Each proposed API addition must cite the user activity it enables and relevant ICD clause.
+## 7. Exact next-session resumption steps
 
-## 6. Source inventory and restoration
+1. Open `https://github.com/nssang00/umaa_dev_sdk`, read **`HANDOFF.md`**, **v0.8.5 Public API**, **REVIEW**, **VALIDATION** and AutoPilot example.
+2. Do not assume v0.8.4 method names still apply; consult the migration table in the newest spec.
+3. If discussing ICD facts, use originals if attached or flag them as earlier cross-checks; no invented new service names or wire topics.
+4. Work on P0s; update current spec, changelog/review, example and HANDOFF together, then make a GitHub commit with its link.
+5. On any interruption, verify current `main` and recent commits before repeating changes; do not blindly overwrite or duplicate.
 
-The original session used a user-supplied `umaa-6.0-idl-with-exp-services.zip` (~594 IDL files) and UMAA 6.0 ICD PDFs for EO, MO, MM, SA, SEM, SO, EXP, CO-EXP. **These source binaries are not committed to this public repository** because redistribution permission was not established. Their former local runtime path (`/mnt/data/...`) **is not portable across sessions**. Request the user to reattach when necessary; do not assume paths survive.
+**Copy-paste prompt for a new session:**
 
-The local design bundle previously produced is named `UMAA_Component_SDK_v0.8.4_Service_Roles_User_API_2026-11-11.zip`. The repository's `docs/current` is intended to be the persistent canonical copy of its text contents.
-
-## 7. Exact steps to resume work after session interruption
-
-1. Open `https://github.com/nssang00/umaa_dev_sdk` and read **`HANDOFF.md`**, then `docs/current/UMAA_Component_SDK_Public_API_v0.8.4.md` and `docs/current/REVIEW_v0.8.4.md`.
-2. Read `docs/SOURCE_INVENTORY.md` to know which ICD/IDL source files are not mirrored.
-3. Distinguish **existing verified docs** from **proposed public API** and **unimplemented runtime**.
-4. Continue at the P0 items above. Prefer narrow edits to latest spec and update `HANDOFF.md`, `CHANGELOG`, and review simultaneously.
-5. Only advance version after updating example source, acceptance checklist, explicit verification results, and Handoff.
-6. Link the GitHub commit/PR on completion. Never assume a prior ephemeral attachment path exists.
-
-**Copy/paste resume prompt:**  
-`nssang00/umaa_dev_sdk 저장소의 HANDOFF.md와 docs/current v0.8.4 명세를 읽고, 이전 대화의 UMAA Component SDK 사용자 API 설계를 이어가자. 구현 내부는 숨기고 사용자 시나리오/ICD 근거 중심으로 P0 보완 사항부터 검토해줘. 검증하지 않은 것은 검증했다고 쓰지 말아줘.`
+`https://github.com/nssang00/umaa_dev_sdk 저장소의 HANDOFF.md와 v0.8.5 Public API·AutoPilot 4-role 예제를 읽어줘. 네 역할 클래스(CommandProvider/CommandConsumer/ReportProvider/ReportConsumer), onReport 자동 구독/request 동적 구독 계약을 기준으로 설계를 이어가고, ICD 근거와 구현 검증 여부를 구분해줘.`
