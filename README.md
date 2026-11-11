@@ -1,6 +1,6 @@
 # UMAA Component SDK — C++11 User Public API
 
-**Design baseline: v0.8.5 (2026-11-11)** · Status: **public API proposal**, not production implementation or proven ICD conformity.
+**Design baseline: v0.8.5 (revised 2026-11-12; Improvement A)** · Status: **public API proposal**, not production implementation or proven ICD conformity.
 
 The goal is a high-level UMAA ICD 6.0 SDK built around the application's **business events and actions**, with DDS Topics, ACK/CommandStatus state machinery, Queryless subscriptions, correlation, liveliness and collection/specialization internals hidden.
 
@@ -15,6 +15,25 @@ The goal is a high-level UMAA ICD 6.0 SDK built around the application's **busin
 - [C++11 declaration sketch](examples/api_sketch/PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp)
 - [Prior versions](docs/history/) — v0.7 through v0.8.4; do not treat as current API
 - [Source inventory](docs/SOURCE_INVENTORY.md)
+
+## Service-first Component registration (Improvement A)
+
+Register Service Provider/Consumer intent with **only two methods**: `m.provide<S>()` and `m.consume<S>()`. The specific ICD Operation `<Op>` determines its Command/Response or Queryless Report handling. Four role classes remain SDK **runtime interfaces**, not four separate registration methods.
+
+```cpp
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
+UMAA_COMPONENT(AutoPilot, m) {
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onSetGlobalVector)
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onCancelGlobalVector);
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onGlobalPoseReport);
+}
+```
+
+The `umaa::services` namespace is a **proposed SDK-generated facade**, not original IDL's `UMAA::...` namespace.
 
 ## Four role classes
 
