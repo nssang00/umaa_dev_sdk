@@ -1,6 +1,6 @@
 # v0.8.5 — 실제 UMAA 6.0 명칭과 Callback 등록 vs 상속/override
 
-**상태:** 사용자 Public API 설계 판단. ICD Operation/IDL 데이터 명칭은 첨부된 UMAA 6.0 IDL ZIP의 Service Markdown 및 IDL 파일에서 확인. C++ SDK 래퍼의 네임스페이스와 타입 태그는 **제안하는 생성 규칙**이지 ICD가 정의한 C++ 타입이 아님.
+**상태:** 사용자 Public API 설계 판단 · 개선안 A (2026-11-12). ICD Operation/IDL 데이터 명칭은 첨부된 UMAA 6.0 IDL ZIP의 Service Markdown 및 IDL 파일에서 확인. C++ SDK 래퍼의 네임스페이스와 타입 태그는 **제안하는 생성 규칙**이지 ICD가 정의한 C++ 타입이 아님.
 
 ## 1. 정확한 원본 명칭 (IDL/Service Definition)
 
@@ -29,9 +29,12 @@
 
 이전 예제의 `VectorSvc`, `VectorOp`, `PoseSvc`, `PoseOp`, `SetGlobalVector`, `Report` 및 `GlobalPoseReport.latitude`는 정규 ICD 생성 이름이 아니므로 **v0.8.5 기본 AutoPilot 예제에서 제거했다.**
 
-## 2. 방식 A — 한 Component에서 실제 Operation에 Callback 등록 (권장)
+## 2. 방식 A — Service 중심 Callback 등록 (2026-11-12 권장 기본 API)
 
 ```cpp
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+
 class AutoPilot : public umaa::Component {
 public:
     umaa::CommandDecision onSetGlobalVector(
@@ -44,22 +47,27 @@ public:
 };
 
 UMAA_COMPONENT(AutoPilot, m) {
-    m.commandProvider<umaa::services::MO::GlobalVectorControl>()
-      .onCommand<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
+    m.provide<MO::GlobalVectorControl>()
+      .onCommand<MO::GlobalVectorControl::setGlobalVector>(
           &AutoPilot::onSetGlobalVector)
-      .onCancel<umaa::services::MO::GlobalVectorControl::setGlobalVector>(
+      .onCancel<MO::GlobalVectorControl::setGlobalVector>(
           &AutoPilot::onCancelGlobalVector);
 
-    m.reportConsumer<umaa::services::SA::GlobalPoseStatus>()
-      .onReport<umaa::services::SA::GlobalPoseStatus::reportGlobalPose>(
+    m.consume<SA::GlobalPoseStatus>()
+      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(
           &AutoPilot::onGlobalPoseReport);
 }
 ```
 
-- 사용자 클래스 한 개 안에 여러 Service와 여러 Role을 원하는 방식으로 결합.
-- `onCommand`가 SDK 등록 메서드, `AutoPilot::onSetGlobalVector`가 사용자 Callback. 서로 다른 이름이어도 의미가 정확하다.
-- SDK는 `<Service,Operation,Role,Payload>` 소속·방향·중복·Handler 서명을 컴파일/등록 시 검증해야 한다.
-- `UMAA_COMPONENT` 매크로는 현재 **설계 등록 구문**이며, 구현시 일반 `configure(Registrar&)` 멤버 함수로 대체하여 매크로 사용을 줄일 수 있다.
+- **사용자가 학습할 등록 함수는 `provide<S>()`와 `consume<S>()` 두 가지**다. SDK가 실제 `Op::OperationRole`/`Op::FlowKind`로 네 런타임 역할에 분배한다.
+- `Registrar::provide<S>()`는 ProviderBinding, `consume<S>()`는 ConsumerBinding을 반환한다. 등록 객체는 `CommandProvider<S>`/ `ReportConsumer<S>` 런타임 실행 핸들이 **아니다**.
+- 하나의 Component에 여러 Service와 Role을 조합할 수 있고, `Config`처럼 Command/Report가 섞인 Service도 `m.provide<S>()` 또는 `m.consume<S>()`로 각 역할을 한 번씩 등록한다.
+- `onCommand`는 SDK 등록 메서드, `AutoPilot::onSetGlobalVector`는 사용자 Callback이다. 메서드의 `<setGlobalVector>`가 실제 ICD Operation을 명시한다.
+- 실제 업무 전송은 여전히 `service<MO::GlobalVectorControl>().commandProvider().respond(...)` 또는 `service<SA::GlobalPoseStatus>().reportConsumer().request<SA::GlobalPoseStatus::reportGlobalPose>(handler)` 등 네 런타임 핸들에서 수행한다.
+- SDK는 Service 소속·Flow·Role·중복·Handler 서명을 검증해야 한다. Hook 없는 `m.provide<SA::GlobalPoseStatus>()`도 일반 Report Provider 선언으로 유효하다.
+- `UMAA_COMPONENT` 매크로는 설계 등록 표현이며, 구현에서 `configure(Registrar&)` 멤버로 대체하는 문제는 별도 결정이다.
+
+**대안으로 검토했으나 비채택:** `m.commandProvider<S>()` 등 네 등록 함수와 Service별 `.onSetGlobalVector()` 전용 등록 함수 자동 생성은 기본 API에 넣지 않는다.
 
 ## 3. 방식 B — 각 Service Provider/Consumer를 사용자가 상속하여 가상 함수 override (대안, 미채택)
 
