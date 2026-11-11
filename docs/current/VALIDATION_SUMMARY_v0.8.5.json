@@ -70,5 +70,34 @@
     "Cancel liveliness and non-interruptible device policies",
     "Subscription auto/dynamic duplicate errors, handler lifetime/serialization, RAII",
     "Real generated Op and Key traits, nested collection/specialization"
-  ]
+  ],
+  "naming_review_2026_11_11": {
+    "checked_against": "user-uploaded umaa-6.0-idl-with-exp-services.zip (actual source contents)",
+    "verified_idl_data_names": [
+      "UMAA::MO::GlobalVectorControl::GlobalVectorCommandType",
+      "UMAA::MO::GlobalVectorControl::GlobalVectorCommandAckReportType",
+      "UMAA::MO::GlobalVectorControl::GlobalVectorCommandStatusType",
+      "UMAA::MO::GlobalVectorControl::GlobalVectorExecutionStatusReportType",
+      "UMAA::SA::GlobalPoseStatus::GlobalPoseReportType"
+    ],
+    "verified_operation_names": [
+      "setGlobalVector",
+      "reportGlobalVectorCommandAck",
+      "reportGlobalVectorCommandStatus",
+      "reportGlobalVectorExecutionStatus",
+      "reportGlobalPose"
+    ],
+    "namespace_warning": "Original IDL UMAA::MO::GlobalVectorControl and UMAA::SA::GlobalPoseStatus are modules, not generated C++ Service facade classes. Proposed umaa::services::* facade names are a SDK design convention.",
+    "removed_example_short_aliases": [
+      "VectorSvc",
+      "VectorOp",
+      "PoseSvc",
+      "PoseOp"
+    ],
+    "verified_report_key": "GlobalPoseReportType @key source (UMAA::Common::IdentifierType)",
+    "corrected_field_model": "GlobalVectorCommandType has speed/direction variants; GlobalPoseReportType has position, not top-level latitude/longitude/sensorId",
+    "latest_edited_example_compiler_check": "NOT RUN",
+    "actual_idl_generated_runtime_header_check": "NOT RUN",
+    "docs_supplement": "docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md"
+  }
 }
