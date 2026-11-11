@@ -1,0 +1,26 @@
+<PARSED TEXT FOR SHEET: 1 / 1 TABS
+TAB NAME: ICD_REQUIREMENTS_v0.8.2.csv>
+index,ID,영역,ICD 명시 여부,UMAA ICD 6.0 근거,ICD가 직접 요구하는 행위·정보,필수 사용자 API 노출,추가 최상위 동사,범위/비고
+0,CMD-01,Command 상태·사유,직접,EO §5.1.3~5.1.4 및 Fig.22~23,Command 단계와 Reason 및 적법한 전이 구분,"CommandDecision; respond(token,result); CommandResponse.status/reason",없음,이상 상태를 실패 또는 불명으로 보고
+1,CMD-02,Command ACK/실행 시작,직접,EO §5.1.4.1,ACK·COMMANDED·EXECUTING과 선택적 ExecutionStatus를 구분,CommandCall/CommandResponse; m.report<StatusOp>; publish<ExecutionOp>,없음,ACK는 Command 실행 완료가 아님
+2,CMD-03,Command 갱신,직접,EO §5.1.4.2,동일 Source/Session 더 최신 Timestamp에서 갱신/재진입,"CommandCall.update; CommandInfo.isUpdate/timestamp; respond(CommandToken,...)",없음,CommandToken은 SDK 안전 설계; ICD가 명명하지 않음
+3,CMD-04,Command 취소,직접,EO §5.1.4.5,취소 의사 전달 후 취소 성공 여부를 실제 최종 Status로 판정,cancel(call/id); m.cancel; CancelDecision; CommandResponse terminal,없음,별도 CancelReply를 규격 Topic으로 만들지 않음
+4,CMD-05,Command Recovery Provider,직접,EO §5.1.2.1,기존 명령을 이어서 수행하거나 FAILED(SERVICE_FAILED) 처리,m.command; CommandInfo.isRecovered/previousStatus,없음,재실행/복구 정책은 사용자 판단 가능해야 함
+5,CMD-06,Command Recovery Consumer,직접,EO §5.1.2.2,자기 명령을 계속 관찰하거나 취소,"m.report<StatusOp>(handler,ReceiveOptions.onRecoveredCommand); RecoveredCommand<Payload>; RecoveryDecision; cancel(id)",없음,원래 Command Payload를 확인하고 Continue/Cancel 선택; Status만으로 Payload 복구를 가정하지 않음
+6,CMD-07,Provider/Consumer 상실,직접(명령 한정),EO §5.1.4.5,진행 중 명령의 Provider/Consumer liveliness 상실과 후속 취소 처리,CommandCall의 관찰 실패/상태; m.cancel 문맥과 CommandInfo,없음,범용 onServiceEvent는 ICD 필수로 판정하지 않음
+7,CMD-08,Session·대상 식별,직접,EO §5.1 및 IDL CommandType,Source·Destination·Session·Timestamp 보존,CommandId; CommandInfo; SendOptions.destination,없음,원본 Source/Session 복합 키 등 유지
+8,REP-01,Report 구독·발행,직접,EO §5.2.1.1~2,Report 제공자 발행과 소비자 구독 및 갱신 수신,publish<Op>; m.report<Op>,없음,조회는 실제 QueryData 없는 Report 구독
+9,REP-02,Report 삭제·기존 데이터 처리,직접,EO §5.2.1.1~4 및 §6.1,Report 데이터 갱신·폐기와 인스턴스 식별,dispose<Op>(key); ReportEvent<T>.kind/key/source,없음,Data Handler는 기본 유효 데이터만 제공
+10,REP-03,Report Key·Optional·Payload,직접,EO §6.1 및 해당 ICD/IDL,복합 Key Optional 데이터 원본 타입 값 보존,typed Key; Optional<T>; IDL Union 분기; ReportEvent.timestamp,없음,표준 enum 및 값 범위를 임의 변환하지 않음
+11,COL-01,Large Collection 생성·공집합,직접,EO §3.8.2 및 §3.8.5,요소ID·집합ID·원자적 첫 Snapshot과 빈 집합,LargeSet<T>/LargeList<T> ID·elements·clear,없음,Command/Report 내 같은 타입 사용
+12,COL-02,Large Collection 갱신·삭제,직접,EO §3.8.3~3.8.4,업데이트 마커와 ElementID·Timestamp 기반 안정 상태 판단 및 제거,"m.report<Op>(handler,ReceiveOptions); CollectionState; collection.id/size/elements; add/set/remove/replaceAll",없음,ICD §3.8.3의 완성 전 데이터 즉시 처리 vs 완료까지 대기 선택을 ReceiveOptions로 제공; changes()는 편의 선택
+13,COL-03,Large List 순서,직접,EO §3.8.7,startingElementID·nextElementID로 정렬 순서 복원,LargeList<T>.insert/move/elements,없음,Element ID 보존
+14,SPC-01,Specialization 연결,직접,EO §3.9.1,일반화·특수화 Topic/ID/Timestamp 관계 성립,Specialized<T>.base/set/is/as/type/identity,없음,type()/identity()는 원본 식별 정보 조회
+15,SPC-02,Specialization 갱신·삭제,직접,EO §3.9.2~3.9.3,양쪽 데이터 갱신과 폐기·중첩 Collection 정합성,Specialized<T>.state; publish/dispose; Collection remove/replace,없음,미완성/미지원 구분은 안전한 사용자 표현
+16,SRV-01,복수 Operation 구별,직접,ICD 각 Service Interfaces 장,Service별 여러 set/report Operation을 각각 구별,m.command<Op>; m.report<Op>; send<Op>; publish<Op>,없음,모호한 Service 단축형 사용 금지
+17,SRV-02,Query 없는 Request/Reply,직접,EO §5.2.1~5.2.2,QueryData 없는 Report는 구독이며 QueryData 포함 Request/Reply는 6.0에 미정의,m.report<ReportOp>,없음,request/m.request를 정규 기본 API에 추가하지 않음
+18,OPT-01,별도 Service discovery/event,ICD 필수 근거 없음,일반 Service·UI 편의 요구,범용 Provider 발견/가용성 변화 통지,별도 onServiceEvent는 현재 비필수,추가 보류,Command liveliness 표준 동작과 혼동 금지
+19,OPT-02,캐시 편의 API,ICD 필수 근거 없음,일반 사용자 편의 요구,latest/next/onStatus 등의 편의 호출,기존 m.report와 CommandCall로 표현 가능,추가 보류,추후 독립적 사용성 평가
+20,OPT-03,SDK 버전 식별 토큰,간접/SDK 설계,EO §5.1.4.2,기존 비동기 명령과 신규 갱신 결과를 혼동하지 않도록 방지,"CommandInfo.token; respond(token,...)",없음,ICD상 별도 버전 필드는 없으므로 Status 귀속 확정 금지
+21,OPT-04,비동기 Deferred 반환,간접/SDK 설계,EO §5.1.4.1,검증·자원 준비 중인 사용자 비동기 처리,CommandDecision.deferred(),없음,Deferred를 UMAA CommandStatus로 표기하지 않음
+22,OPT-05,상태 완전성/오류 열거형,간접/SDK 설계,EO §3.8~3.9 및 §5.1,부분 데이터·미지원 타입·로컬 Timeout과 표준 상태 구분,CollectionState; SpecializationState; CommandOutcome,없음,표준에는 SDK enum 명칭 없음
