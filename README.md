@@ -1,66 +1,79 @@
 # UMAA Component SDK — C++11 User Public API
 
-**Design baseline: v0.8.5 (revised 2026-11-12; Improvement A)** · Status: **public API proposal**, not production implementation or proven ICD conformity.
+**Design baseline: v0.8.6 (2026-11-20)** · **Public API proposal**, not a production DDS implementation or proven UMAA ICD 6.0 conformance.
 
-The goal is a high-level UMAA ICD 6.0 SDK built around the application's **business events and actions**, with DDS Topics, ACK/CommandStatus state machinery, Queryless subscriptions, correlation, liveliness and collection/specialization internals hidden.
+The SDK goal is to expose actual UMAA IDL business messages while hiding DDS Topics, ACK/CommandStatus mechanics, Queryless subscriptions, Session and Timestamp correlation, liveliness, and collection/specialization transport.
 
 ## Read first
 
-- [HANDOFF.md](HANDOFF.md) — durable context, decisions, open issues and exact session-resume checklist
-- [v0.8.5 Public API](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md) — **authoritative current spec**
-- [Review and limitations](docs/current/REVIEW_v0.8.5.md)
-- [ICD-exact naming and registration vs inheritance](docs/current/API_REGISTRATION_VS_INHERITANCE_v0.8.5.md)
-- [Change log](docs/current/CHANGELOG_v0.8.5.md)
-- [AutoPilot four-role example](examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
-- [C++11 declaration sketch](examples/api_sketch/PUBLIC_API_CXX11_DECLARATION_SKETCH_v0.8.5.hpp)
-- [Prior versions](docs/history/) — v0.7 through v0.8.4; do not treat as current API
-- [Source inventory](docs/SOURCE_INVENTORY.md)
+- [HANDOFF.md](HANDOFF.md) — project decisions, validation boundaries, outstanding tasks
+- **[v0.8.6 Public API — authoritative current proposal](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)**
+- **[v0.8.6 usage examples — all four roles](examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)**
+- [v0.8.6 change log](docs/current/CHANGELOG_v0.8.6.md)
+- [Previous v0.8.5 API (registration-oriented)](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md)
+- [Previous v0.8.5 example](examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
+- [v0.8.5 review and unverified items](docs/current/REVIEW_v0.8.5.md)
+- [Older versions](docs/history/) and [source inventory](docs/SOURCE_INVENTORY.md)
 
-## Service-first Component registration (Improvement A)
+## v0.8.6 core decision: generated Service role objects, inherited common verbs
 
-Register Service Provider/Consumer intent with **only two methods**: `m.provide<S>()` and `m.consume<S>()`. The specific ICD Operation `<Op>` determines its Command/Response or Queryless Report handling. Four role classes remain SDK **runtime interfaces**, not four separate registration methods.
+The SDK generates concrete Service Provider/Consumer types inheriting one or more of these four common role classes:
+`CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>`.
 
 ```cpp
 namespace MO = umaa::services::MO;
 namespace SA = umaa::services::SA;
 
+MO::GlobalVectorControlConsumer vectorConsumer;  // SDK generated
+SA::GlobalPoseStatusProvider poseProvider;        // SDK generated
+
+UMAA::MO::GlobalVectorControl::GlobalVectorCommandType command;
+UMAA::SA::GlobalPoseStatus::GlobalPoseReportType pose;
+
+fillCommand(command);
+fillPose(pose);
+
+auto call = vectorConsumer.command(command);
+poseProvider.publish(pose);
+call.update(updatedCommand);
+call.cancel();
+```
+
+The original `UMAA::...` C++ data types come from the UMAA IDL/RTI generated mapping. The `umaa::services::...` classes are **proposed SDK-generated facades**, not structs in original IDL. Existing v0.8.5 examples use the **superseded** templated `command<Op>` / `publish<Op>` default and `m.provide/consume` registration.
+
+### Hooks: direct original IDL types
+
+```cpp
+class MyPoseConsumer : public SA::GlobalPoseStatusConsumer {
+public:
+    void onReport(
+        const UMAA::SA::GlobalPoseStatus::GlobalPoseReportType& pose) override {
+        usePosition(pose.position());
+    }
+    void onDispose(const UMAA::Common::IdentifierType& source) override {
+        invalidatePose(source);
+    }
+};
+```
+
+Optional `onReport(const T&, const ReportInfo&)` provides metadata. For CommandProviders, the generated class exposes `onCommand(const CommandIDL&, const CommandInfo&)` and `onCancel(const CancelInfo&)`. The application supplies actual hardware state via inherited `respond(token, progress)` and `publish(token, executionStatusIDL)`.
+
+### Component registration
+
+```cpp
 UMAA_COMPONENT(AutoPilot, m) {
-    m.provide<MO::GlobalVectorControl>()
-      .onCommand<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onSetGlobalVector)
-      .onCancel<MO::GlobalVectorControl::setGlobalVector>(&AutoPilot::onCancelGlobalVector);
-    m.consume<SA::GlobalPoseStatus>()
-      .onReport<SA::GlobalPoseStatus::reportGlobalPose>(&AutoPilot::onGlobalPoseReport);
+    m.add(&AutoPilot::vectorControl);
+    m.add(&AutoPilot::poseConsumer);
+    m.add(&AutoPilot::healthProvider);
 }
 ```
 
-The `umaa::services` namespace is a **proposed SDK-generated facade**, not original IDL's `UMAA::...` namespace.
+`m.add(&Component::member)` is a proposed C++11 registration mechanism, *not yet implemented*. It works with the generated objects and avoids requiring one user-side registration callback per Operation.
 
-## Four role classes
+## Compatibility and validation truth
 
-| Flow | Role API | User actions | Hooks |
-|---|---|---|---|
-| Command/Response | `CommandProvider<S>` | `respond`, `publish<ExecutionOp>` | `onCommand`, `onCancel` |
-| Command/Response | `CommandConsumer<S>` | `command`, `cancel`; `CommandCall<Op>::update/get/wait` | `onStatus`, optional `onAck`, `onExecutionStatus`, `onRecoveredCommand` |
-| Queryless Request/Reply | `ReportProvider<S>` | `publish`, `dispose`, snapshot `publish` | none by default |
-| Queryless Request/Reply | `ReportConsumer<S>` | optional dynamic `request<Op>(handler)`, `getLatest` | `onReport<Op>(handler)` (starts auto-subscription at Component start) |
-
-`S` is a generated **Service definition** (e.g., `mo::GlobalVectorControl`), `Op` is a generated **Operation type**. The four classes are **runtime role interfaces**, not four different Service subclasses. For Config services, Command and Report role APIs can coexist. Actual supported roles are determined by ICD Operation metadata, not Service name suffixes.
-
-**Subscription decision:** `onReport<Op>(handler)` is static auto-subscription; `request<Op>(handler)` is dynamic subscription with a `Subscription` handle. The same Component must not use both for identical S/Op without an explicit future extension; default result is `AlreadySubscribed`.
-
-## AutoPilot example structure
-
-```text
-MissionManager (CommandConsumer) --> AutoPilot (CommandProvider)
-                                 --> AutoPilot (ReportConsumer) <-- PositionSensor (ReportProvider)
-```
-
-The example is **illustrative only**. Its mock IDL payloads, declarations and empty hardware methods do **not** implement a real SDK or DDS runtime.
-
-## Validation truth
-
-See `docs/current/VALIDATION_SUMMARY_v0.8.5.json` for exact verified vs unverified checks. A C++11 syntax-only sketch is not evidence of full UMAA ICD compliance. Full generated Service compile coverage, actual DDS data exchange, provider restart cleanup and command recovery remain open.
-
-## Source material / rights
-
-The earlier user-provided UMAA ICD PDF manuals and the expanded 594-IDL ZIP are **not included** in this public repository because their redistribution rights have not been checked. See [source inventory](docs/SOURCE_INVENTORY.md); new sessions should use attached originals when exact primary-source validation is needed.
+- **This is a v0.8.6 design change**, not a patch to the current C++11 mock headers or a completed DDS runtime.
+- Mapping by `(Service, role, message type)` must be checked for uniqueness. Ambiguous cases require explicit `<Op>` or typed operation tags.
+- Large Collection and Specialization remain separate wire Topics; the public proposal passes original IDL Report plus a `LargeList`/`LargeSet` sidecar, not fabricated fields in the original IDL struct.
+- Previous [v0.8.5 validation summary](docs/current/VALIDATION_SUMMARY_v0.8.5.json) remains evidence of **what was and was not checked in v0.8.5**, not proof of v0.8.6.
+- The original UMAA ICD PDF manuals and IDL source archives are not mirrored in this repository; see [source inventory](docs/SOURCE_INVENTORY.md).
