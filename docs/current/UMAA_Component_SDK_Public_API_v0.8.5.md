@@ -1,5 +1,7 @@
 # UMAA Component SDK — 사용자 Public API v0.8.5
 
+> **이전 버전 안내 (2026-11-20):** 이 문서는 v0.8.5 당시의 등록형 API를 기록한다. **현재 기본 제안은 [v0.8.6 Service 상속형 API](UMAA_Component_SDK_Public_API_v0.8.6.md)**이며, 각 Provider/Consumer 객체의 상속된 공통 `command()`/`publish()`와 원본 IDL 타입 Hook을 사용한다. [사용 예제](../../examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md).
+
 > **상태:** SDK 설계 계약(제안). 구현 코드·전체 서비스 타입 생성·DDS/ICD 런타임 적합성 인증이 아니다.  
 > **갱신:** 2026-11-12 (개선안 A: Service 중심 역할 등록) · **C++:** C++11 · **전 버전:** [v0.8.4](../history/v0.8.4/UMAA_Component_SDK_Public_API_v0.8.4.md)  
 > **주요 입력:** 사용자 제공 `UMAA_Public_API_Summary_KO.md`, UMAA ICD 6.0 (§3.8, §3.9, §5.1, §5.2), RTI Starter Kit Hook 목록.
