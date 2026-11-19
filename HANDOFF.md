@@ -1,3 +1,20 @@
+# HANDOFF — UMAA Component SDK (current v0.8.6)
+
+> **Current decision, 2026-11-20:** The authoritative proposal is [Public API v0.8.6](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md) with [four-role usage examples](examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md) and [change log](docs/current/CHANGELOG_v0.8.6.md). **Everything below the divider is the v0.8.5 handoff history, not the current API.**
+
+## v0.8.6 decisions to preserve
+
+- Generate Service-specific classes such as `GlobalVectorControlConsumer` / `GlobalPoseStatusProvider`, each inheriting `CommandProvider/Consumer<S>` or `ReportProvider/Consumer<S>`. Users call **uniform inherited actions** `consumer.command(idlMessage)`, `provider.publish(idlMessage)`, `call.update()` / `call.cancel()`, `provider.respond()`, `provider.publish(token, executionIDL)`.
+- User Hook inputs and publisher arguments are **original UMAA-generated IDL message types**. The SDK `reportGlobalPose` Operation tag is not a generated IDL Data Type and is unnecessary in the default call.
+- Generated Service classes supply **concrete typed virtual Hooks**, not virtual function templates (not allowed in C++11). `onReport(const T&)` is the default; `onReport(const T&, ReportInfo&)` is optional; `onDispose(key)` is separate from data delivery.
+- Component composition uses proposed `m.add(&Component::serviceRoleMember)` instead of mandatory `m.provide/consume`/`service<S>()` chains. Both registration syntax and concrete generated classes are **unimplemented**.
+- `(Service, role, IDL message type)` must resolve to exactly one Operation. If not, require explicit `<Op>` or typed tags. Mixed Config and duplicate Key signatures require generator safeguards.
+- Large Collection and Specialization do **not** become invented fields on original IDL structs. `publish(originalReport, LargeList/Set)` is the proposed overload, with SDK-managed extra Element/Specialization Topics.
+- **Not verified**: actual generated facade compilation against RTI C++11 IDL outputs; type mapping uniqueness across 139 Services; DDS Command/Report/Dispose, Session cancellation/recovery, Large 18 Element + 48 Specialization Topics. Existing v0.8.5 validation cannot be carried over as v0.8.6 implementation proof.
+- See v0.8.5 content below for prior decisions/reference input; preserve historical file paths as historical.
+
+---
+
 # HANDOFF — UMAA Component SDK v0.8.5 Public API
 
 **Updated:** 2026-11-12 Asia/Seoul  
