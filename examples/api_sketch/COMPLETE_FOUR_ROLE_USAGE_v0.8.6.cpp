@@ -418,8 +418,8 @@ UMAA_COMPONENT(MissionManager, m) {
  *  - Request는 일반 Report 구독이며 일회성 RPC가 아니다.
  *  - Report Data와 DDS Dispose/NoWriters는 다르며 onReport(T&)에 유효하지
  *    않은 데이터 객체를 넘기지 않는다.
- *  - CommandHandle(권장 이름) vs CommandHandle(현재 v0.8.6 명세의 타입명):
- *    본 예제에서는 'auto handle' 로 받아 명칭 확정 전 소스 차이를 피했다.
+ *  - 공개 반환 타입 이름은 CommandHandle<Message>로 확정했다.
+ *    auto handle은 해당 Source/Session을 추적하기 위한 사용자 변수다.
  *  - 실제 runtime, generated C++11 headers, DDS 전송, Large Collection
  *    2~3 Topic 조립/원자성 및 recovery 검증은 완료되지 않았다.
  */
