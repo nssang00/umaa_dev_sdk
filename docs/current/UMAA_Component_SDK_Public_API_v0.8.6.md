@@ -295,6 +295,7 @@ Consumer는 `onReport(const BatteryReportType&, const LargeList<BatteryCellDataT
 
 ## 9. 코드 예제 및 이전 버전 변경
 
+- **[AutoPilot 실제 14개 Service를 사용한 C++11 예제](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — UMAA Component Definitions v1.0 §3.1에 따른 Provider 7 + Consumer 7, 실제 MO/SA/MM/EO/SO IDL 메시지 타입.
 - **[v0.8.6 통합 C++11 API 코드](../../examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 하나의 파일에서 Command/Report 4역할, 명령 추적, Dispose, Request, Large Collection, Specialization, Component 등록을 확인한다.
 - **[v0.8.6 전체 사용 예제](../../examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)** — 네 역할, Command 갱신·취소·상태, Report 삭제, 동적 구독, Multiple Report, Large Collection, Specialization.
 - **[기존 v0.8.5 명세](UMAA_Component_SDK_Public_API_v0.8.5.md)** — 등록형 API를 사용한 과거 설계이며 이 문서의 기본 UX와 다르다.
