@@ -4,6 +4,8 @@
 
 ## 사용자 결정 반영
 
+**2026-11-20 추가 명확화:** 생성 IDL 타입은 공개 데이터 멤버 또는 접근자 매핑일 수 있어 양쪽 예시를 추가했다. `command(cmd)` 기본 호출은 반환값을 무시할 수 있고, 반환 `CommandCall`은 ACK/응답이 아니라 선택적 세션 추적 핸들이다. 로컬 `cmd.speed` 변경은 전송이 아니므로 기존 명령 갱신에는 `call.update(updated)`가 필요하다. 핸들 소멸에 따른 자동 취소는 금지한다.
+
 1. **Service별 생성 클래스 기본 UX:** `GlobalVectorControlConsumer`, `GlobalPoseStatusProvider` 등 공통 네 역할 기반 클래스를 상속한 구체 클래스 자동 생성.
 2. **Action 이름 통일:** `consumer.command(cmd)`, `provider.publish(report)`, `provider.dispose(reportWithKey)`; Operation/Topic 자동 매핑(모호한 경우 명시적 `<Op>`).
 3. **원본 IDL Data Type 직접 전달:** `GlobalPoseReportType`, `GlobalVectorCommandType` 등을 사용자가 채우고 Hook에서 직접 읽음. 별도 `Op::Data`는 기본 API에서 제거.
