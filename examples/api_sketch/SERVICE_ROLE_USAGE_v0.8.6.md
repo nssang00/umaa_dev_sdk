@@ -1,6 +1,6 @@
 # v0.8.6 사용자 사용 예제 — Service별 Provider/Consumer 객체 + 공통 함수
 
-> **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandCall`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. RTI C++ 생성 타입의 필드 접근자 `field()` 문법을 가정한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
+> **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandCall`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. 원본 IDL 생성 타입은 **공개 데이터 멤버(`field = value`) 또는 접근자(`field(value)`/`field()`) 형태**일 수 있다. 예제에서는 상황에 따라 하나를 사용하며, 실제 컴파일 시에는 생성된 타입에 맞춰 선택한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
 
 ## 0. 사용자가 보게 되는 핵심 다섯 줄
 
@@ -120,28 +120,17 @@ private:
 
 ## 3. CommandConsumer: command / update / cancel / get / wait / Hook
 
-### 3.1 소비만 하면 되는 경우: **상속 구현 없이** 생성 객체 사용
+### 3.1 가장 단순한 사용: 반환값 없이 Command 발행
 
 ```cpp
 class MissionManager : public umaa::Component {
 public:
-    MO::GlobalVectorControlConsumer vector;  // 그대로 사용 가능
+    MO::GlobalVectorControlConsumer vector;
 
     void navigate() {
         VectorCommand cmd;
-        fillVectorCommand(cmd); // 실제 direction/mode/speed 포함
-
-        auto call = vector.command(cmd);   // Operation 추론, CommandCall 반환
-
-        VectorCommand updated = cmd;
-        setNewSpeed(updated);
-        call.update(updated);              // 기존 활성 Session 갱신
-
-        auto observation = call.get();
-        auto commanded = call.wait(umaa::WaitStage::Commanded, 3000);
-
-        auto attempt = call.cancel();       // DDS Dispose 요청
-        // 실제 CANCELED/COMPLETED/FAILED는 Status로 별도 확인
+        fillVectorCommand(cmd); // 실제 방향/속도/모드를 채움
+        vector.command(cmd);     // 단순 명령 전송: 반환값은 무시
     }
 };
 
@@ -150,7 +139,48 @@ UMAA_COMPONENT(MissionManager, m) {
 }
 ```
 
-### 3.2 ACK / Status / ExecutionStatus가 필요하면 Consumer 상속
+실제 `GlobalVectorCommandType`의 C++ 필드 설정 방식은 생성기에 따라 다르다.
+
+```cpp
+VectorCommand cmd;
+// CASE A: 생성 타입이 공개 데이터 멤버를 제공하는 경우
+cmd.direction     = desiredDirection;
+cmd.directionMode = desiredMode;
+cmd.speed         = desiredSpeedRequirement; // SpeedRequirementVariantType
+vector.command(cmd);
+
+// CASE B: 접근자 함수를 제공하는 경우(별도의 매핑 빌드)
+VectorCommand accessorCmd;
+accessorCmd.direction(desiredDirection);
+accessorCmd.directionMode(desiredMode);
+accessorCmd.speed(desiredSpeedRequirement);
+vector.command(accessorCmd);
+```
+
+**CASE A/B를 같은 타입으로 동시에 컴파일하라는 뜻이 아니다.** `speed`는 원본 IDL에서 `SpeedRequirementVariantType`이므로 `newSpeed`가 단순 `double`일 때 곧바로 대입할 수 있다고 가정하지 않는다.
+
+### 3.2 기존 Command를 수정·취소하거나 상태를 추적할 때만 핸들 사용
+
+```cpp
+VectorCommand cmd;
+fillVectorCommand(cmd);
+
+auto call = vector.command(cmd);     // CommandCall: 로컬 세션 식별/추적 핸들
+
+VectorCommand updated = cmd;
+updated.speed = newSpeedRequirement; // 공개 데이터 멤버 매핑의 예
+// updated.speed(newSpeedRequirement); // 접근자 매핑에서는 이 문법
+call.update(updated);                // 실제 갱신 전송은 이 호출에서 발생
+
+auto observation = call.get();
+auto commanded = call.wait(umaa::WaitStage::Commanded, 3000);
+
+auto attempt = call.cancel();        // 취소 요청, 원격 CANCELED 확정 아님
+```
+
+`auto call`은 **원격 ACK·Response 데이터가 아니다.** `cmd.speed = ...`만으로는 원격 명령이 수정되지 않는다. `update`는 같은 Command Session의 갱신이며, `command(cmd)`의 결과 핸들을 **받지 않아도 전송이 유지**된다. 핸들을 소멸시킨다고 원격 장비가 자동 정지해서는 안 된다.
+
+### 3.3 ACK / Status / ExecutionStatus가 필요하면 Consumer 상속
 
 ```cpp
 class MyVectorConsumer : public MO::GlobalVectorControlConsumer {
