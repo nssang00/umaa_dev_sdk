@@ -150,7 +150,7 @@ void sendOnce(MissionVector& consumer) {
     consumer.command(cmd);
 }
 
-// 명령 관리가 필요한 경우: CommandCall(세션 추적 Handle)만 보관.
+// 명령 관리가 필요한 경우: CommandHandle(세션 추적 Handle)만 보관.
 void sendManageUpdateCancel(MissionVector& consumer) {
     VectorCommand cmd;
     fillVectorCommand(cmd);
@@ -418,7 +418,7 @@ UMAA_COMPONENT(MissionManager, m) {
  *  - Request는 일반 Report 구독이며 일회성 RPC가 아니다.
  *  - Report Data와 DDS Dispose/NoWriters는 다르며 onReport(T&)에 유효하지
  *    않은 데이터 객체를 넘기지 않는다.
- *  - CommandHandle(권장 이름) vs CommandCall(현재 v0.8.6 명세의 타입명):
+ *  - CommandHandle(권장 이름) vs CommandHandle(현재 v0.8.6 명세의 타입명):
  *    본 예제에서는 'auto handle' 로 받아 명칭 확정 전 소스 차이를 피했다.
  *  - 실제 runtime, generated C++11 headers, DDS 전송, Large Collection
  *    2~3 Topic 조립/원자성 및 recovery 검증은 완료되지 않았다.
