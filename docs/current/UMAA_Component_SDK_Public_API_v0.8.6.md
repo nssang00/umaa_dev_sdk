@@ -2,7 +2,7 @@
 
 > **상태:** 사용자 지향 **설계 계약/코드 예시**. 아직 구현된 SDK·실제 IDL 바인딩 컴파일·DDS 상호운용·UMAA 적합성 인증을 의미하지 않는다.  
 > **개정:** 2026-11-20 · **언어:** C++11 · **이전:** [v0.8.5](UMAA_Component_SDK_Public_API_v0.8.5.md)  
-> **기준:** UMAA ICD 6.0의 Service/Operation/IDL Data Type, RTI UMAA Starter Kit의 Service Provider/Consumer 구성, 사용자 결정(상속된 공통 동사 및 원본 IDL 직접 전달).
+> **기준:** UMAA ICD 6.0의 Service/Operation/IDL Data Type, RTI UMAA Starter Kit의 Service Provider/Consumer 구성, 사용자 결정(생성 Service별 Provider/Consumer, 내부 역할 합성, 공통 Action 및 실제 IDL 타입 Callback).
 
 ## 0. 최종 공개 API: 생성 Service별 Provider/Consumer
 
@@ -283,7 +283,7 @@ conditionalProvider.publish(conditionalReport, conditionals);
 
 이는 `publish(const ReportIDL&, const CollectionView&)`라는 **생성된 Service별 오버로드**의 제안이다. SDK는 원본 Report의 Metadata를 채운 전송용 복사본, Collection Element Topic, Specialization Topic을 모두 동기화한다. 같은 요소 타입으로 여러 컬렉션을 가진 메시지는 컬렉션 필드 태그가 추가로 필요할 수 있다.
 
-Consumer는 `onReport(const BatteryReportType&, const LargeList<BatteryCellDataType>&)` 또는 `onReport(const ConditionalReportType&, const LargeSet<Specialized<ConditionalType>>&)`라는 **생성된 전체 조립형 오버로드**를 선택할 수 있다. 기본 정책은 CompleteOnly이며, 일부 미수신/원소 순서/삭제/Unsupported specialization을 정상 데이터와 구분한다. **Cross-Topic 원자적 가시성을 DDS가 제공한다고 가정하지 않는다.**
+Consumer는 생성된 객체에서 `onReport([](const BatteryReportType&, const LargeList<BatteryCellDataType>&){...})` 또는 `onReport([](const ConditionalReportType&, const LargeSet<Specialized<ConditionalType>>&){...})`와 같이 **복합 Report를 받는 타입 지정 Callback**을 등록한다. 기본 정책은 CompleteOnly이며, 일부 미수신/원소 순서/삭제/Unsupported specialization을 정상 데이터와 구분한다. **Cross-Topic 원자적 가시성을 DDS가 제공한다고 가정하지 않는다.**
 
 ## 8. C++11 및 사용자 계약
 
