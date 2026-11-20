@@ -131,6 +131,16 @@ public:
         if (execution.directionAchieved && execution.speedAchieved)
             notifyTargetsAchieved();
     }
+
+    // SDK 재시작/세션 복구 시 기존 명령을 어떻게 처리할지 결정
+    umaa::RecoveryDecision onRecoveredCommand(
+        const VectorCommand& prior,
+        const umaa::CommandInfo& info) override
+    {
+        return shouldContinue(prior, info)
+            ? umaa::RecoveryDecision::Continue
+            : umaa::RecoveryDecision::Cancel;
+    }
 };
 
 // 가장 단순한 방법: 반환값을 무시해도 Command는 정상 전송되고 계속 실행될 수 있다.
