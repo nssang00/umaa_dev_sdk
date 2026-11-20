@@ -6,28 +6,36 @@
 
 **2026-11-20 AutoPilot 실제 Service 예제:** [`AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp`](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)를 추가했다. 공식 Component Definition의 Provider 7, Consumer 7 방향과 원본 IDL Message 이름을 기준으로 작성했으며, 외부 Mission Executor 및 Navigation Provider 예제는 AutoPilot의 역할 수에 포함하지 않는다.
 
-## 사용자 결정 반영
+## 최신 확정 구조 — 2026-11-20
+
+- 공개 생성 클래스는 `<ServiceName>Provider` / `<ServiceName>Consumer`로 명명하고 각각 `umaa::Service`를 한 번 상속한다.
+- 네 역할 `CommandProvider/Consumer<S>`, `ReportProvider/Consumer<S>`는 **SDK 내부 멤버 합성/위임**이며, Service 분류 `Config/Control/Specs/Status`를 사용자 클래스 상속 계층으로 표현하지 않는다.
+- 사용자 기본 Hook은 **Callback 등록** (`onCommand(lambda)`, `onReport(lambda)`); Service별 사용자 subclass 및 `override` 필수가 아니다.
+- 실제 UMAA 6.0 `SA::GlobalPoseConfig`는 `GlobalPoseConfigCommandType` 및 `GlobalPoseConfigReportType`의 두 패턴을 지원한다. [혼합 예제](../../examples/api_sketch/CONFIG_MIXED_SERVICE_v0.8.6.cpp). AutoPilot의 공식 14 Service에는 포함되지 않는다.
+- [AutoPilot 14 Service 예제](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)를 **직접 생성 Service 멤버 + Callback 등록**으로 교체했다. 이전 [override 스케치](../../examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)는 기본 API가 아닌 대안으로만 보존한다.
+
+## 과거 v0.8.6 설계 이력 (아래 항목은 일부 대체됨)
 
 **2026-11-20 추가 명확화:** 생성 IDL 타입은 공개 데이터 멤버 또는 접근자 매핑일 수 있어 양쪽 예시를 추가했다. `command(cmd)` 기본 호출은 반환값을 무시할 수 있고, 반환 `CommandHandle`은 ACK/응답이 아니라 선택적 세션 추적 핸들이다. 로컬 `cmd.speed` 변경은 전송이 아니므로 기존 명령 갱신에는 `handle.update(updated)`가 필요하다. 핸들 소멸에 따른 자동 취소는 금지한다.
 
-1. **Service별 생성 클래스 기본 UX:** `GlobalVectorControlConsumer`, `GlobalPoseStatusProvider` 등 공통 네 역할 기반 클래스를 상속한 구체 클래스 자동 생성.
+1. **Service별 생성 클래스 기본 UX:** `GlobalVectorControlConsumer`, `GlobalPoseStatusProvider` 등 Service별 생성 클래스가 `umaa::Service`를 상속하고 필요한 내부 역할 구현을 합성하도록 변경.
 2. **Action 이름 통일:** `consumer.command(cmd)`, `provider.publish(report)`, `provider.dispose(reportWithKey)`; Operation/Topic 자동 매핑(모호한 경우 명시적 `<Op>`).
 3. **원본 IDL Data Type 직접 전달:** `GlobalPoseReportType`, `GlobalVectorCommandType` 등을 사용자가 채우고 Hook에서 직접 읽음. 별도 `Op::Data`는 기본 API에서 제거.
 4. **Report Hook:** `onReport(const T&)`가 기본. 필요한 경우에만 `onReport(const T&, ReportInfo&)`; Dispose는 별도 `onDispose(key)`. 기본 Hook에 `ReportEvent<T>::data()` 강제 안 함.
-5. **상속형 Hook:** Service별 생성된 virtual overload를 사용자 클래스가 `override`. 기본 역할 클래스에 virtual function template을 두지 않음(C++11 불가능).
+5. **Callback 기본 Hook:** Service별 생성된 facade에 `onCommand(lambda)`/`onReport(lambda)`를 등록. 사용자 `override`는 선택적 이전 방식이며 C++11 가상 함수 템플릿은 불가능.
 6. **Component 등록:** `m.add(&Component::member)`를 새 제안 등록 구문으로 사용. 기존 `m.provide/consume` 기본 경로에서 제외.
 7. **복합 데이터:** 실제 IDL Report 타입은 수정하지 않고 `publish(report, LargeList/Set)` 오버로드로 Element 및 Specialization을 함께 전송하도록 제안.
-8. **중복 Operation/Key 및 혼합 Config:** message→Operation 유일성 검사, 타입화된 fallback/tag, 복수 기반 클래스의 함수 집합 병합 규칙을 명시.
+8. **중복 Operation/Key 및 혼합 Config:** message→Operation 유일성 검사, 태그 fallback, **중복 Service 기반 상속 없이 내부 Command/Report 멤버 합성** 규칙을 명시.
 
 ## v0.8.5 → v0.8.6 예제
 
 | v0.8.5 | v0.8.6 |
 |---|---|
-| `m.provide<S>().onCommand<Op>(&T::handler)` | `m.add(&T::providerMember)` + `provider.onCommand(const IDL&, info) override` |
+| `m.provide<S>().onCommand<Op>(&T::handler)` | `m.add(&T::providerMember)` + `provider.onCommand(lambda)` |
 | `service<S>().commandConsumer().command<Op>(cmd)` | `consumer.command(cmd)` |
 | `service<S>().reportProvider().publish<Op>(report)` | `provider.publish(report)` |
-| `service<S>().commandProvider().respond(token, status)` | `provider.respond(token, status)` (상속 함수) |
-| `onReport(ReportEvent<IDL>)` | `onReport(const IDL&)` (+ 선택적 info / dispose) |
+| `service<S>().commandProvider().respond(token, status)` | `provider.respond(token, status)` (내부 Command 역할로 위임) |
+| `onReport(ReportEvent<IDL>)` | `consumer.onReport(lambda(const IDL&))` (+ 선택적 info / dispose) |
 | 생성 SDK 데이터 `Op::Data` 제안 | 원본 UMAA IDL 데이터 타입 그대로 사용 |
 
 ## 호환성·검증
