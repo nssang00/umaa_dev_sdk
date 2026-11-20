@@ -4,110 +4,116 @@
 > **개정:** 2026-11-20 · **언어:** C++11 · **이전:** [v0.8.5](UMAA_Component_SDK_Public_API_v0.8.5.md)  
 > **기준:** UMAA ICD 6.0의 Service/Operation/IDL Data Type, RTI UMAA Starter Kit의 Service Provider/Consumer 구성, 사용자 결정(상속된 공통 동사 및 원본 IDL 직접 전달).
 
-## 0. 채택한 사용자 경험
+## 0. 최종 공개 API: 생성 Service별 Provider/Consumer
 
-**사용자는 Service별 생성된 Provider/Consumer 객체를 보유하거나 상속하고, 공통 동사만 호출한다.**
+**사용자는 Generator가 만든 `<ServiceName>Provider`와 `<ServiceName>Consumer` 객체를 Component 멤버로 사용한다.** 별도의 사용자 Service 하위 클래스나 `CommandProvider<S>` 등 네 역할 템플릿을 직접 선언할 필요는 없다.
 
-```cpp
-// 실제 UMAA IDL 데이터 타입을 직접 작성
-UMAA::MO::GlobalVectorControl::GlobalVectorCommandType cmd;
-fillCommand(cmd);
-
-// Service별 Consumer 객체에서 상속된 공통 함수 사용
-vectorConsumer.command(cmd);         // 기본: 보내기만 하면 반환값 무시
-
-// 선택적: 나중에 수정·취소·상태 확인이 필요할 때만 핸들 보관
-auto handle = vectorConsumer.command(cmd);
-handle.update(updated);
-handle.cancel();
-
-globalPoseProvider.publish(pose);
-healthProvider.publish(health);
-specsProvider.publish(specs);
-```
-
-**비채택(기본 경로):** `service<S>().commandConsumer().command<Op>(msg)`, `publishGlobalPose(msg)`, `setGlobalVector(msg)`, 일률적인 `Op::Data`, 수신 Hook의 일률적인 `ReportEvent<T>::data()`.  
-**고급 예외:** 동일 Service + 역할에서 메시지 C++ 타입만으로 Operation을 유일하게 결정할 수 없으면 `command<Op>(msg)` / `publish<Op>(msg)`를 명시한다. 자동으로 임의 선택하지 않는다.
-
-## 1. 개념 및 실제 타입
-
-| 개념 | 예 | 정의 |
-|---|---|---|
-| Component | `AutoPilot` | 여러 Service 역할 인스턴스 조합 |
-| Service 종류 | Config / Control / Specs / StatusReport / Other | 기능 분류 정보; 실제 Flow/역할 결정자가 아님 |
-| SDK 생성 Service 역할 클래스 | `MO::GlobalVectorControlConsumer` | Service에 종속된 구체 클래스, 공통 역할 클래스를 상속 |
-| 공통 역할 클래스 | `CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>` | 공통 Action 및 런타임 |
-| 원본 ICD Operation | `setGlobalVector`, `reportGlobalPose` | ICD Operation 이름; 생성될 Operation tag는 내부/고급 API용 |
-| **원본 IDL Data Type** | `UMAA::MO::GlobalVectorControl::GlobalVectorCommandType`, `UMAA::SA::GlobalPoseStatus::GlobalPoseReportType` | 사용자가 작성하고 Hook에서 읽는 실제 메시지 |
-| SDK OperationTraits | `(Service, role, message type) → Op/Topic` | 생성기 메타데이터, 기본 사용자 API에 노출하지 않음 |
-
-`UMAA::...`는 원본 IDL의 모듈/생성 C++ 타입이고, `umaa::services::MO::...`는 **SDK 생성 예정 클래스 이름**이다. 실제 C++ 필드는 **생성기·매핑 설정에 따라 공개 멤버 변수 `cmd.speed` 또는 접근자 `cmd.speed()`/`cmd.speed(value)` 형태**일 수 있다. 기본 SDK API는 양쪽 매핑의 원본 타입과 호환되어야 한다. 한 객체에서 두 문법을 동시에 쓸 수 있다는 뜻은 아니다. 예제의 `fillCommand`/`controller_` 등은 사용자 업무 함수이다.
-
-### 상속 계층
+`Config / Control / Specs / StatusReport`는 **Service 기능 분류**, `Provider / Consumer`는 **참여 방향**, `Command/Response / Queryless Request/Reply`는 **Operation 통신 패턴**이다. 따라서 사용자용 `ControlService`, `ConfigService`, `ReportService`를 패턴별 기반 클래스로 만들지 않는다.
 
 ```cpp
-// 모두 SDK가 생성한다. 사용자는 이 코드를 작성하지 않는다.
-class GlobalVectorControlConsumer
-    : public umaa::CommandConsumer<GlobalVectorControl> {};
+namespace MO = umaa::services::MO;
+namespace SA = umaa::services::SA;
+namespace EO = umaa::services::EO;
+namespace MM = umaa::services::MM;
 
-class GlobalVectorControlProvider
-    : public umaa::CommandProvider<GlobalVectorControl> {
-protected:
-    // 생성기는 Operation에 맞춰 실제 메시지 타입별 virtual Hook 선언
-    virtual umaa::CommandDecision onCommand(
-        const UMAA::MO::GlobalVectorControl::GlobalVectorCommandType&,
-        const umaa::CommandInfo&);
-    virtual umaa::CancelDecision onCancel(
-        const umaa::CancelInfo&);
-};
+using VectorCmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
+using Pose = UMAA::SA::GlobalPoseStatus::GlobalPoseReportType;
 
-class GlobalPoseStatusProvider
-    : public umaa::ReportProvider<GlobalPoseStatus> {};
-
-class GlobalPoseStatusConsumer
-    : public umaa::ReportConsumer<GlobalPoseStatus> {
-protected:
-    virtual void onReport(
-        const UMAA::SA::GlobalPoseStatus::GlobalPoseReportType&);
-    virtual void onDispose(const UMAA::Common::IdentifierType&);
-};
-```
-
-이 코드는 계약 설명용 선언 스케치다. **C++11에는 virtual function template이 없으므로** 기반 클래스가 모든 Report/Command 타입에 대해 virtual 템플릿을 정의할 수 없다. 생성기가 실제 메시지 타입별 virtual overload를 만들어야 한다. 단일 Service에 여러 Operation이 있는 경우 해당 메시지 타입별 overload를 생성한다.
-
-### Component 구성
-
-```cpp
 class AutoPilot : public umaa::Component {
 public:
-    MyVectorProvider vector;
-    MyPoseConsumer pose;
-    MyHealthProvider health;
+    MO::GlobalVectorControlProvider vector;            // Provider
+    SA::GlobalPoseStatusConsumer pose;                  // Consumer
+    EO::UVPlatformSpecsProvider specs;                  // Provider
+    MM::MissionPlanConstraintControlConsumer constraints; // Consumer
+
+    AutoPilot() {
+        vector.onCommand([this](const VectorCmd& cmd,
+                                const umaa::CommandInfo& info) {
+            startVectorHardware(cmd, info.token()); // 사용자 업무 함수
+            return umaa::CommandDecision::accepted();
+        });
+        pose.onReport([this](const Pose& report) {
+            updateNavigation(report);
+        });
+    }
 };
 
 UMAA_COMPONENT(AutoPilot, m) {
     m.add(&AutoPilot::vector);
     m.add(&AutoPilot::pose);
-    m.add(&AutoPilot::health);
+    m.add(&AutoPilot::specs);
+    m.add(&AutoPilot::constraints);
 }
 ```
 
-`m.add(&Component::member)`는 **v0.8.6의 제안 등록 API**다. C++11의 멤버 포인터를 사용하므로 현재 v0.8.5 매크로의 범위 밖 지역 변수를 요구하지 않는다. SDK가 Component 인스턴스의 멤버를 등록하고 수명·시작/종료를 관리한다. 객체를 직접 생성했으나 등록하지 않거나, Component 시작 전에 전송하는 행위는 오류로 정의한다.
+위 코드는 공식 AutoPilot Service 14개 중 4개를 추린 것이다. [실제 14개 전체 예제](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)를 참조한다.
 
-## 2. 네 역할의 공통 Action / Hook
+## 1. umaa::Service와 네 내부 역할의 관계
 
-| 역할 | 상속한 Action | 생성된 역할 클래스의 Hook |
+생성된 Provider/Consumer 클래스 **하나가 `umaa::Service`를 상속하고**, 지원하는 통신 패턴의 구현 객체를 **합성·위임(Composition)** 한다. 네 역할 구현 클래스가 각각 `Service`를 상속하도록 해 Diamond 상속을 만들지 않는다.
+
+```text
+AutoPilot : umaa::Component
+ ├─ GlobalVectorControlProvider : umaa::Service
+ │   └─ 내부 CommandProvider<GlobalVectorControl>
+ └─ GlobalPoseStatusConsumer : umaa::Service
+     └─ 내부 ReportConsumer<GlobalPoseStatus>
+
+별도 Config 서비스:
+ GlobalPoseConfigProvider : umaa::Service
+  ├─ 내부 CommandProvider<GlobalPoseConfig>
+  └─ 내부 ReportProvider<GlobalPoseConfig>
+ GlobalPoseConfigConsumer : umaa::Service
+  ├─ 내부 CommandConsumer<GlobalPoseConfig>
+  └─ 내부 ReportConsumer<GlobalPoseConfig>
+```
+
+네 종류 `CommandProvider<S>` / `CommandConsumer<S>` / `ReportProvider<S>` / `ReportConsumer<S>`는 **SDK 내부 동작·DDS 상태 관리 객체**이고, `ServiceTraits<S>`가 Operation/IDL/Topic 매핑을 제공한다. 사용자용 전용 클래스는 역할 객체의 지원 Action만 전달한다.
+
+### Generator 내부 구성 예시 (설계 스케치)
+
+```cpp
+// SDK 생성: 실제 C++ IDL 타입/패턴에 맞는 메서드만 출력
+class GlobalPoseConfigProvider : public umaa::Service {
+    using S = GlobalPoseConfig;
+    umaa::detail::CommandProvider<S> commandRole_;
+    umaa::detail::ReportProvider<S> reportRole_;
+public:
+    template<class Handler> void onCommand(Handler cb) {
+        commandRole_.onCommand(cb);
+    }
+    void respond(const umaa::CommandToken& t,
+                 const umaa::CommandProgress& status) {
+        commandRole_.respond(t, status);
+    }
+    void publish(
+        const UMAA::SA::GlobalPoseConfig::GlobalPoseConfigReportType& report) {
+        reportRole_.publish(report);
+    }
+};
+```
+
+이 클래스의 정확한 생성자/런타임 바인딩 및 타입 제한은 생성기 구현 대상이다. C++11 가상 함수 템플릿 없이 Callback을 등록할 수 있다. Config Consumer는 `CommandConsumer<S> + ReportConsumer<S>`를 내부 합성하여 `command()`와 `onReport()`를 모두 제공한다.
+
+## 2. 역할별 공개 Action과 실제 Config의 혼합 패턴
+
+| Service 객체에 노출할 기능 | 내부 구현 | 사용자 코드 |
 |---|---|---|
-| `CommandProvider<S>` | `respond(token, progress)`, `publish(token, executionData)` | `onCommand(const CommandIDL&, CommandInfo)`, `onCancel(CancelInfo)` |
-| `CommandConsumer<S>` | `command(commandIDL)` → `CommandHandle`, `handle.update(message)`, `handle.cancel()`, `handle.get()/wait()` | `onAck(const AckIDL&)`, `onStatus(const StatusIDL&)`, `onExecutionStatus(const ExecutionIDL&)`, 선택적 복구 Hook |
-| `ReportProvider<S>` | `publish(reportIDL)`, `dispose(reportWithKey)`, `publish(snapshot, ReplaceOwnedInstances)` | 없음 |
-| `ReportConsumer<S>` | 명시적 `request(handler)`, `Subscription.close()`, `getLatest(key)` | `onReport(const ReportIDL&)`, 선택적 `onReport(const ReportIDL&, ReportInfo)`, `onDispose(key)` |
+| Command Provider | `CommandProvider<S>` | `onCommand(handler)`, `onCancel(handler)`, `respond(token, progress)`, `publish(token, executionIDL)` |
+| Command Consumer | `CommandConsumer<S>` | `command(cmd)` → `CommandHandle<Message>`, `handle.update/cancel/get/wait`, `onAck/onStatus/onExecutionStatus` |
+| Report Provider | `ReportProvider<S>` | `publish(report)`, `dispose(keyedReport)` |
+| Report Consumer | `ReportConsumer<S>` | `onReport(handler)`, `onDispose(handler)`, `request(handler)`, `getLatest(key)` |
 
-**메시지 타입 추론:** `(Service, 역할, Message)` 조합이 하나의 Operation만 가리키면 컴파일 타임에 자동 선택한다. Operation과 다른 서비스 타입 전달, 중복 매핑, 유효하지 않은 Flow는 컴파일 오류 또는 명시적 진단이다.
+Config는 **Command/Response와 Report 패턴을 함께 가질 수 있다**. 예를 들어 실제 UMAA 6.0 `SA::GlobalPoseConfig`에는 `GlobalPoseConfigCommandType`과 `GlobalPoseConfigReportType`이 정의되어 있으며, 생성 Provider 하나에서 `onCommand(...)`와 `publish(configReport)`를 모두 제공할 수 있다. 다만 `GlobalPoseConfig`는 AutoPilot의 공식 14개 Service에 포함되지 않는다. [원본 Service 설명](https://github.com/rticommunity/rticonnextdds-usecases-umaa/blob/main/datamodel/umaa/idl/UMAA/SA/GlobalPoseConfig/GlobalPoseConfig.md), [Command IDL](https://github.com/rticommunity/rticonnextdds-usecases-umaa/blob/main/datamodel/umaa/idl/UMAA/SA/GlobalPoseConfig/GlobalPoseConfigCommandType.idl), [Report IDL](https://github.com/rticommunity/rticonnextdds-usecases-umaa/blob/main/datamodel/umaa/idl/UMAA/SA/GlobalPoseConfig/GlobalPoseConfigReportType.idl).
 
-**중복/서명 충돌:** 같은 Service의 두 Operation이 같은 메시지 타입이거나 동일한 Key 타입을 사용하면 C++ overload만으로 Hook을 구분할 수 없다. 생성기는 `OperationTag<Op>` 또는 `Disposed<Payload>` 등의 **타입화된 식별 인자**를 제공하고, 필요한 때만 이를 사용한다. 모든 Service가 인자 타입만으로 구별된다고 가정하지 않는다.
+**Operation 선택:** `(Service, 역할, 원본 IDL 타입)`이 유일할 때는 `command(data)`, `publish(data)` 및 타입을 가진 Callback으로 자동 추론한다. 동일 타입 다중 Operation이나 Key가 같은 Dispose Hook이면 `<Op>` 명시 또는 타입 태그를 사용하며, 임의 Operation을 선택하지 않는다.
 
-**Config 혼합 Service:** 같은 Service에서 Command와 일반 Report가 모두 존재할 수 있다. 생성 Provider/Consumer는 두 역할 기반 클래스를 조합하며, `publish(token, executionData)`와 `publish(reportData)`의 오버로드 집합을 `using` 선언 등으로 명확히 병합한다. 일반 Report/Command 역할을 ServiceKind로 추측하지 않는다.
+**기본 Hook은 Callback 등록**이다. 생성된 클래스를 사용자가 다시 상속하고 `override`하는 방식을 필수화하지 않는다. 특수 어댑터로 별도 허용할 수 있지만 동일 Operation에 중복 Callback은 호출하지 않는다.
+
+**CommandHandle:** 원격 ACK/결과가 아니라 Source/Session을 추적하는 핸들. 반환값을 무시해도 명령 전송 동작은 같고 소멸 시 자동 취소되지 않는다. 원본 IDL 변수를 수정하는 것만으로 전송되지 않으며 `handle.update(updated)`로 갱신한다.
+
+**원본 IDL:** 생성 C++ 매핑은 공개 변수 `cmd.speed = value` 또는 접근자 `cmd.speed(value)` 중 실제 매핑에 맞는 문법을 사용한다. `GlobalVectorCommandType.speed`는 단순 `double`이 아니라 `SpeedRequirementVariantType`이다. SDK는 전달된 원본 IDL 객체를 변경하지 않는다.
+
 
 ## 3. CommandConsumer: 간단히 command(cmd), 필요할 때만 CommandHandle
 
