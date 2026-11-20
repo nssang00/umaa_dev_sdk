@@ -14,6 +14,9 @@ UMAA::MO::GlobalVectorControl::GlobalVectorCommandType cmd;
 fillCommand(cmd);
 
 // Service별 Consumer 객체에서 상속된 공통 함수 사용
+vectorConsumer.command(cmd);         // 기본: 보내기만 하면 반환값 무시
+
+// 선택적: 나중에 수정·취소·상태 확인이 필요할 때만 핸들 보관
 auto call = vectorConsumer.command(cmd);
 call.update(updated);
 call.cancel();
@@ -38,7 +41,7 @@ specsProvider.publish(specs);
 | **원본 IDL Data Type** | `UMAA::MO::GlobalVectorControl::GlobalVectorCommandType`, `UMAA::SA::GlobalPoseStatus::GlobalPoseReportType` | 사용자가 작성하고 Hook에서 읽는 실제 메시지 |
 | SDK OperationTraits | `(Service, role, message type) → Op/Topic` | 생성기 메타데이터, 기본 사용자 API에 노출하지 않음 |
 
-`UMAA::...`는 원본 IDL의 모듈/생성 C++ 타입이고, `umaa::services::MO::...`는 **SDK 생성 예정 클래스 이름**이다. 실제 C++ 필드 접근법은 사용한 RTI IDL 생성기 매핑을 따른다(예: `pose.position()`). 예제의 `fillCommand`/`controller_` 등은 사용자 업무 함수이다.
+`UMAA::...`는 원본 IDL의 모듈/생성 C++ 타입이고, `umaa::services::MO::...`는 **SDK 생성 예정 클래스 이름**이다. 실제 C++ 필드는 **생성기·매핑 설정에 따라 공개 멤버 변수 `cmd.speed` 또는 접근자 `cmd.speed()`/`cmd.speed(value)` 형태**일 수 있다. 기본 SDK API는 양쪽 매핑의 원본 타입과 호환되어야 한다. 한 객체에서 두 문법을 동시에 쓸 수 있다는 뜻은 아니다. 예제의 `fillCommand`/`controller_` 등은 사용자 업무 함수이다.
 
 ### 상속 계층
 
@@ -106,24 +109,70 @@ UMAA_COMPONENT(AutoPilot, m) {
 
 **Config 혼합 Service:** 같은 Service에서 Command와 일반 Report가 모두 존재할 수 있다. 생성 Provider/Consumer는 두 역할 기반 클래스를 조합하며, `publish(token, executionData)`와 `publish(reportData)`의 오버로드 집합을 `using` 선언 등으로 명확히 병합한다. 일반 Report/Command 역할을 ServiceKind로 추측하지 않는다.
 
-## 3. CommandConsumer: 생성된 Service 객체에서 command()
+## 3. CommandConsumer: 간단히 command(cmd), 필요할 때만 CommandCall
+
+### 3.1 기본 사용: Command를 보낼 뿐이라면 반환값은 받지 않는다
 
 ```cpp
 namespace MO = umaa::services::MO;
 using Cmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
 
-MO::GlobalVectorControlConsumer vectorConsumer; // Component에 등록된 멤버
-Cmd cmd;
-fillCommand(cmd); // direction / directionMode / speed 등의 실제 IDL 필드
+MO::GlobalVectorControlConsumer vectorConsumer; // Component에 등록된 객체
+Cmd cmd; // 실제 IDL 생성 타입
+fillCommand(cmd); // 실제 direction / directionMode / speed 구성
 
-auto call = vectorConsumer.command(cmd);       // Operation 자동 선택
-Cmd revised = cmd;
-updateDesiredSpeed(revised);
-call.update(revised);                           // 동일 Source/Session, 새 timeStamp
-auto observed = call.get();                     // 현재 로컬 관찰값
-auto state = call.wait(umaa::WaitStage::Commanded, 3000);
-auto cancelAttempt = call.cancel();             // 취소 *요청*, CANCELED 확정 아님
+vectorConsumer.command(cmd); // 끝. 반환되는 핸들은 무시
 ```
+
+원본 `GlobalVectorCommandType.idl`에는 `direction: DirectionRequirementVariantType`, `directionMode: DirectionModeEnumType`, `speed: SpeedRequirementVariantType`가 정의되어 있다. **`speed`는 단순한 숫자 필드가 아니라 Variant 타입**이므로 `newSpeed` 같은 임의 `double`을 직접 대입할 수 있다고 가정하지 않는다.
+
+**공개 멤버를 사용하는 C++ 생성 매핑이라면:**
+
+```cpp
+Cmd cmd;
+cmd.direction     = desiredDirection;        // 실제 DirectionRequirementVariantType
+cmd.directionMode = desiredMode;             // 실제 DirectionModeEnumType
+cmd.speed         = desiredSpeedRequirement; // 실제 SpeedRequirementVariantType
+vectorConsumer.command(cmd);
+```
+
+**접근자 함수를 생성하는 C++ 매핑이라면:**
+
+```cpp
+Cmd cmd;
+cmd.direction(desiredDirection);
+cmd.directionMode(desiredMode);
+cmd.speed(desiredSpeedRequirement);
+vectorConsumer.command(cmd);
+```
+
+두 방식은 **같은 메시지의 서로 다른 C++ 생성 매핑 예**이며, 사용 중인 타입이 제공하는 하나의 문법을 선택한다. `desiredSpeedRequirement`는 IDL Variant 값이 이미 적법하게 구성되어 있다고 가정한다.
+
+### 3.2 반환값 `CommandCall`은 무엇인가?
+
+`command(cmd)`는 전송 동작이면서, **해당 명령의 Source/Session을 추적하는 로컬 핸들 `CommandCall<Cmd>`(개념 타입)를 반환**한다. 이 핸들은 **원격 ACK, 실제 응답 메시지, 명령 수락 또는 실행 완료를 뜻하지 않는다**. 사용자가 단지 명령을 보낼 때는 반환값을 무시하면 된다.
+
+```cpp
+// 명령 갱신·취소를 해야 하는 경우에만 핸들 저장
+Cmd initial;
+fillCommand(initial);
+
+auto call = vectorConsumer.command(initial); // 새 Command Session
+
+Cmd updated = initial;
+// 실제 생성 매핑 중 하나만 사용한다.
+updated.speed = revisedSpeedRequirement;       // 공개 멤버 방식
+// updated.speed(revisedSpeedRequirement);     // 접근자 방식
+
+call.update(updated);  // ***여기서 갱신 명령을 전송함***
+auto state = call.get();
+auto observed = call.wait(umaa::WaitStage::Commanded, 3000);
+auto attempt = call.cancel(); // 취소 요청; CANCELED 확정 아님
+```
+
+**중요:** `initial.speed = revisedSpeedRequirement;` 또는 `initial.speed(revisedSpeedRequirement);`만 실행하면 **로컬 객체만 바뀌며 네트워크 전송은 일어나지 않는다**. 기존 명령에 실제로 반영하려면 `call.update(updated)`를 호출해야 한다. `update`는 새 `command()`가 아니므로 같은 Source/Session과 더 최신 Command Timestamp를 사용한다.
+
+**핸들 수명 계약:** `CommandCall`은 명령을 소유하는 RAII 취소 객체가 아닌 **명령 식별/추적 핸들**이다. `vectorConsumer.command(cmd);`처럼 반환값을 무시하거나 핸들이 소멸하더라도 **원격 Command가 자동 취소되어서는 안 된다**. 필요한 경우에만 명시적으로 `call.cancel()`을 요청한다. 전송 제출 실패와 원격 Provider의 FAILED는 구분하며, 전송 오류를 예외/오류 결과로 전달하는 세부 계약은 실제 구현에서 확정한다.
 
 선택적 CommandConsumer Hook은 원본 `GlobalVectorCommandAckReportType`, `GlobalVectorCommandStatusType`, `GlobalVectorExecutionStatusReportType`를 **직접 인자로** 받는다. 동일 Service의 다수 Operation/Session을 처리하려면 `CommandInfo`를 선택적 두 번째 인자로 받는다. `wait` timeout 및 transport failure와 원격 FAILED는 다르다. `setGlobalVector`는 `endTime`이 없으면 무기한 실행될 수 있으므로 무조건 Terminal까지 대기하는 예제는 피한다.
 
