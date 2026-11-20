@@ -37,13 +37,13 @@ fillPose(pose);
 vectorConsumer.command(command);   // ordinary use: send only
 poseProvider.publish(pose);
 
-// Only save the returned CommandCall if later update/cancel/status is needed
-auto call = vectorConsumer.command(command);
-call.update(updatedCommand);
-call.cancel();
+// Only save the returned CommandHandle if later update/cancel/status is needed
+auto handle = vectorConsumer.command(command);
+handle.update(updatedCommand);
+handle.cancel();
 ```
 
-The original `UMAA::...` C++ data types come from the UMAA IDL/RTI generated mapping. Depending on the generated mapping, fields may be public members (`cmd.speed = requirement`) or accessor methods (`cmd.speed(requirement)`). `GlobalVectorCommandType::speed` is a `SpeedRequirementVariantType`, not necessarily a scalar. `CommandCall` is a session-tracking handle, **not** the remote ACK or reply, and discarding it must not cancel the command. The `umaa::services::...` classes are **proposed SDK-generated facades**, not structs in original IDL. Existing v0.8.5 examples use the **superseded** templated `command<Op>` / `publish<Op>` default and `m.provide/consume` registration.
+The original `UMAA::...` C++ data types come from the UMAA IDL/RTI generated mapping. Depending on the generated mapping, fields may be public members (`cmd.speed = requirement`) or accessor methods (`cmd.speed(requirement)`). `GlobalVectorCommandType::speed` is a `SpeedRequirementVariantType`, not necessarily a scalar. `CommandHandle` is a session-tracking handle, **not** the remote ACK or reply, and discarding it must not cancel the command. The `umaa::services::...` classes are **proposed SDK-generated facades**, not structs in original IDL. Existing v0.8.5 examples use the **superseded** templated `command<Op>` / `publish<Op>` default and `m.provide/consume` registration.
 
 ### Hooks: direct original IDL types
 
