@@ -1,84 +1,73 @@
 # UMAA Component SDK — C++11 User Public API
 
-**Design baseline: v0.8.6 (2026-11-20)** · **Public API proposal**, not a production DDS implementation or proven UMAA ICD 6.0 conformance.
+**Current design baseline: v0.8.6, revised 2026-11-20.** This repository is a **Public API design proposal**; generated Service facades, RTI IDL integration and DDS runtime conformance have **not** been implemented/verified.
 
-The SDK goal is to expose actual UMAA IDL business messages while hiding DDS Topics, ACK/CommandStatus mechanics, Queryless subscriptions, Session and Timestamp correlation, liveliness, and collection/specialization transport.
+## Start here
 
-## Read first
+- **[v0.8.6 Public API contract](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)** — current naming, generated facade, Service composition and flow separation
+- **[AutoPilot's actual 14 UMAA 6.0 Services — C++11 example](examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — 7 Providers and 7 Consumers; default Callback model
+- **[Actual mixed Config pattern — GlobalPoseConfig](examples/api_sketch/CONFIG_MIXED_SERVICE_v0.8.6.cpp)** — Command/Response and Queryless Report in one Service Provider/Consumer
+- [Four-role user usage guide](examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)
+- [v0.8.6 Changelog](docs/current/CHANGELOG_v0.8.6.md)
+- [HANDOFF / design history](HANDOFF.md), [v0.8.5 registration proposal](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md)
+- [Earlier inheritance/override sketch — **not current default**](examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)
+- [Source inventory](docs/SOURCE_INVENTORY.md)
 
-- [HANDOFF.md](HANDOFF.md) — project decisions, validation boundaries, outstanding tasks
-- **[v0.8.6 Public API — authoritative current proposal](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)**
-- **[AutoPilot actual 14-Service C++11 usage sketch](examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — the normative Autopilot's 7 Provider and 7 Consumer roles with original ICD 6.0 IDL type names.
-- **[Complete v0.8.6 C++11 API sketch (single file)](examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)**
-- **[v0.8.6 usage examples — all four roles](examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)**
-- [v0.8.6 change log](docs/current/CHANGELOG_v0.8.6.md)
-- [Previous v0.8.5 API (registration-oriented)](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md)
-- [Previous v0.8.5 example](examples/api_sketch/AUTOPILOT_FOUR_ROLES_v0.8.5.cpp)
-- [v0.8.5 review and unverified items](docs/current/REVIEW_v0.8.5.md)
-- [Older versions](docs/history/) and [source inventory](docs/SOURCE_INVENTORY.md)
+## Public naming: Service name + Provider / Consumer
 
-## v0.8.6 core decision: generated Service role objects, inherited common verbs
+- **Config/Control/Specs/Status**: business **Service category**, never a public role base class.
+- **Provider/Consumer**: Component participation direction.
+- **Command/Response and Queryless Request/Reply**: capabilities of the Service's **individual Operations**.
+- **Generated classes**: `MO::GlobalVectorControlProvider`, `SA::GlobalPoseStatusConsumer`, `EO::UVPlatformSpecsProvider` and others, derived **once** from `umaa::Service`.
+- **Internal composition**: generated Service classes **contain/delegate to** `CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>` and/or `ReportConsumer<S>`. These four implementations do not each inherit `Service`. A mixed Config Service combines both relevant flow roles.
 
-The SDK generates concrete Service Provider/Consumer types inheriting one or more of these four common role classes:
-`CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>`.
+Users normally subclass **only Component**, not every generated Provider/Consumer. They register typed callbacks and invoke common verbs on the generated member objects.
 
 ```cpp
 namespace MO = umaa::services::MO;
 namespace SA = umaa::services::SA;
+namespace EO = umaa::services::EO;
+namespace MM = umaa::services::MM;
 
-MO::GlobalVectorControlConsumer vectorConsumer;  // SDK generated
-SA::GlobalPoseStatusProvider poseProvider;        // SDK generated
+using VectorCmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
+using Pose = UMAA::SA::GlobalPoseStatus::GlobalPoseReportType;
 
-UMAA::MO::GlobalVectorControl::GlobalVectorCommandType command;
-UMAA::SA::GlobalPoseStatus::GlobalPoseReportType pose;
-
-fillCommand(command);
-fillPose(pose);
-
-vectorConsumer.command(command);   // ordinary use: send only
-poseProvider.publish(pose);
-
-// Only save the returned CommandHandle if later update/cancel/status is needed
-auto handle = vectorConsumer.command(command);
-handle.update(updatedCommand);
-handle.cancel();
-```
-
-The original `UMAA::...` C++ data types come from the UMAA IDL/RTI generated mapping. Depending on the generated mapping, fields may be public members (`cmd.speed = requirement`) or accessor methods (`cmd.speed(requirement)`). `GlobalVectorCommandType::speed` is a `SpeedRequirementVariantType`, not necessarily a scalar. `CommandHandle` is a session-tracking handle, **not** the remote ACK or reply, and discarding it must not cancel the command. The `umaa::services::...` classes are **proposed SDK-generated facades**, not structs in original IDL. Existing v0.8.5 examples use the **superseded** templated `command<Op>` / `publish<Op>` default and `m.provide/consume` registration.
-
-### Hooks: direct original IDL types
-
-```cpp
-class MyPoseConsumer : public SA::GlobalPoseStatusConsumer {
+class AutoPilot : public umaa::Component {
 public:
-    void onReport(
-        const UMAA::SA::GlobalPoseStatus::GlobalPoseReportType& pose) override {
-        usePosition(pose.position());
-    }
-    void onDispose(const UMAA::Common::IdentifierType& source) override {
-        invalidatePose(source);
+    MO::GlobalVectorControlProvider vector;
+    SA::GlobalPoseStatusConsumer pose;
+    EO::UVPlatformSpecsProvider specs;
+    MM::MissionPlanConstraintControlConsumer constraints;
+
+    AutoPilot() {
+        vector.onCommand([this](const VectorCmd& cmd,
+                                const umaa::CommandInfo& info) {
+            startVectorHardware(cmd, info.token());
+            return umaa::CommandDecision::accepted();
+        });
+        pose.onReport([this](const Pose& report) {
+            updateNavigation(report);
+        });
     }
 };
+
+// In AutoPilot implementation:
+constraints.command(addConstraint);   // new command, Handle may be ignored
+auto handle = constraints.command(addConstraint);
+handle.update(revisedConstraint);
+handle.cancel();
+specs.publish(platformSpecsReport);
 ```
 
-Optional `onReport(const T&, const ReportInfo&)` provides metadata. For CommandProviders, the generated class exposes `onCommand(const CommandIDL&, const CommandInfo&)` and `onCancel(const CancelInfo&)`. The application supplies actual hardware state via inherited `respond(token, progress)` and `publish(token, executionStatusIDL)`.
+The code above illustrates the API, not a compiled SDK; `startVectorHardware` and `updateNavigation` are application placeholders. Returning `CommandHandle<Message>` is optional to retain; the Handle does not contain the remote ACK or auto-cancel on destruction.
 
-### Component registration
+## Mixed Config services
 
-```cpp
-UMAA_COMPONENT(AutoPilot, m) {
-    m.add(&AutoPilot::vectorControl);
-    m.add(&AutoPilot::poseConsumer);
-    m.add(&AutoPilot::healthProvider);
-}
-```
+Real UMAA 6.0 `SA::GlobalPoseConfig` has both `GlobalPoseConfigCommandType` and `GlobalPoseConfigReportType`. Generated `GlobalPoseConfigProvider : Service` combines internal CommandProvider and ReportProvider; a Consumer combines CommandConsumer and ReportConsumer. This is why public `ControlService`/`ConfigService` naming is not used. See [Config example](examples/api_sketch/CONFIG_MIXED_SERVICE_v0.8.6.cpp). It is **not one of the AutoPilot reference component's 14 Service roles**.
 
-`m.add(&Component::member)` is a proposed C++11 registration mechanism, *not yet implemented*. It works with the generated objects and avoids requiring one user-side registration callback per Operation.
+## Compatibility and truth in validation
 
-## Compatibility and validation truth
-
-- **This is a v0.8.6 design change**, not a patch to the current C++11 mock headers or a completed DDS runtime.
-- Mapping by `(Service, role, message type)` must be checked for uniqueness. Ambiguous cases require explicit `<Op>` or typed operation tags.
-- Large Collection and Specialization remain separate wire Topics; the public proposal passes original IDL Report plus a `LargeList`/`LargeSet` sidecar, not fabricated fields in the original IDL struct.
-- Previous [v0.8.5 validation summary](docs/current/VALIDATION_SUMMARY_v0.8.5.json) remains evidence of **what was and was not checked in v0.8.5**, not proof of v0.8.6.
-- The original UMAA ICD PDF manuals and IDL source archives are not mirrored in this repository; see [source inventory](docs/SOURCE_INVENTORY.md).
+- Actual IDL-generated C++ members may be fields (`cmd.speed = requirement`) or accessors (`cmd.speed(requirement)`). `GlobalVectorCommandType.speed` is `SpeedRequirementVariantType`, not simply `double`.
+- Generator must check unique mapping of `(Service, role, IDL message) → Operation`; ambiguous signatures require an explicit Operation tag.
+- Existing v0.8.5 mock syntax tests do **not** certify this changed v0.8.6 architecture.
+- DDS QoS, Sessions, cancellation, recovery, disposal, Large Collections, Specialization and cross-Topic assembly require implementation and end-to-end verification.
