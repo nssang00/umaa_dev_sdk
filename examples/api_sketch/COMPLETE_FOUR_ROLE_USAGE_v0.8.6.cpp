@@ -1,4 +1,9 @@
 /*
+ * LEGACY ALTERNATIVE — generated Service subclasses with virtual override.
+ * This is NOT the current default v0.8.6 API. Current examples:
+ *  - AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp (generated Service MEMBERS + callbacks)
+ *  - CONFIG_MIXED_SERVICE_v0.8.6.cpp (generated Config composition)
+ *
  * UMAA Component SDK v0.8.6 — 전체 Public API 사용자 예제 (C++11 설계 스케치)
  *
  * 주의: 실제 SDK 생성 클래스와 Runtime이 아직 없으므로, 본 파일은 실행/컴파일
