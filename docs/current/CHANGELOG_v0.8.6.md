@@ -4,6 +4,8 @@
 
 **2026-11-20 명칭 확정:** v0.8.6의 반환 핸들 타입명을 `CommandCall<Message>`에서 `CommandHandle<Message>`로 변경했다. 일반 호출 `consumer.command(cmd);`의 전송·상태 동작은 동일하며, Handle은 선택적으로 보관해 `update()`·`cancel()`·`get()`·`wait()`에 사용한다. 기존 `CommandCall`은 v0.8.5 이전 설계 이력으로만 취급한다.
 
+**2026-11-20 AutoPilot 실제 Service 예제:** [`AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp`](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)를 추가했다. 공식 Component Definition의 Provider 7, Consumer 7 방향과 원본 IDL Message 이름을 기준으로 작성했으며, 외부 Mission Executor 및 Navigation Provider 예제는 AutoPilot의 역할 수에 포함하지 않는다.
+
 ## 사용자 결정 반영
 
 **2026-11-20 추가 명확화:** 생성 IDL 타입은 공개 데이터 멤버 또는 접근자 매핑일 수 있어 양쪽 예시를 추가했다. `command(cmd)` 기본 호출은 반환값을 무시할 수 있고, 반환 `CommandHandle`은 ACK/응답이 아니라 선택적 세션 추적 핸들이다. 로컬 `cmd.speed` 변경은 전송이 아니므로 기존 명령 갱신에는 `handle.update(updated)`가 필요하다. 핸들 소멸에 따른 자동 취소는 금지한다.
