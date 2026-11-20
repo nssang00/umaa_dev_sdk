@@ -180,7 +180,7 @@ auto commanded = handle.wait(umaa::WaitStage::Commanded, 3000);
 auto attempt = handle.cancel();        // 취소 요청, 원격 CANCELED 확정 아님
 ```
 
-`auto call`은 **원격 ACK·Response 데이터가 아니다.** `cmd.speed = ...`만으로는 원격 명령이 수정되지 않는다. `update`는 같은 Command Session의 갱신이며, `command(cmd)`의 결과 핸들을 **받지 않아도 전송이 유지**된다. 핸들을 소멸시킨다고 원격 장비가 자동 정지해서는 안 된다.
+`auto handle`은 **원격 ACK·Response 데이터가 아니다.** `cmd.speed = ...`만으로는 원격 명령이 수정되지 않는다. `update`는 같은 Command Session의 갱신이며, `command(cmd)`의 결과 핸들을 **받지 않아도 전송이 유지**된다. 핸들을 소멸시킨다고 원격 장비가 자동 정지해서는 안 된다.
 
 ### 3.3 ACK / Status / ExecutionStatus가 필요하면 Consumer 상속
 
