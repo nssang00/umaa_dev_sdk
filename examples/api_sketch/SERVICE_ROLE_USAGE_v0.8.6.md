@@ -2,6 +2,7 @@
 
 > **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandHandle`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. 원본 IDL 생성 타입은 **공개 데이터 멤버(`field = value`) 또는 접근자(`field(value)`/`field()`) 형태**일 수 있다. 예제에서는 상황에 따라 하나를 사용하며, 실제 컴파일 시에는 생성된 타입에 맞춰 선택한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
 
+- **[실제 AutoPilot 14개 Service 기반 통합 C++11 예제](AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — 7 Provider + 7 Consumer, 실제 ICD 6.0 Service와 IDL 타입. 이 파일의 다른 가상 Component 시나리오와 구분하여 볼 것.
 - **[한 파일에 정리한 C++11 전체 API 코드](COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 모든 역할을 하나의 소스에서 순서대로 확인. 구현되지 않은 SDK/장비 함수가 포함된 설계 스케치.
 
 ## 0. 사용자가 보게 되는 핵심 다섯 줄
