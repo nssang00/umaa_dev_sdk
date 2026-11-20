@@ -1,454 +1,207 @@
-# v0.8.6 사용자 사용 예제 — Service별 Provider/Consumer 객체 + 공통 함수
+# UMAA SDK Public API v0.8.6 — 네 역할 사용 예제 (2026-11-20 설계 갱신)
 
-> **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandHandle`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. 원본 IDL 생성 타입은 **공개 데이터 멤버(`field = value`) 또는 접근자(`field(value)`/`field()`) 형태**일 수 있다. 예제에서는 상황에 따라 하나를 사용하며, 실제 컴파일 시에는 생성된 타입에 맞춰 선택한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
+> **SDK 구현 전 디자인 스케치.** 사용자 기본형은 Generator가 만든 `<ServiceName>Provider/Consumer` 객체를 **Component 멤버로 보유**하고 `onCommand/onReport` Callback을 등록하는 것이다. 추가 사용자 상속 클래스 및 `override`는 필수가 아니다. C++11과 원본 UMAA ICD 6.0 IDL 타입을 대상으로 한다.
 
-- **[실제 AutoPilot 14개 Service 기반 통합 C++11 예제](AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — 7 Provider + 7 Consumer, 실제 ICD 6.0 Service와 IDL 타입. 이 파일의 다른 가상 Component 시나리오와 구분하여 볼 것.
-- **[한 파일에 정리한 C++11 전체 API 코드](COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 모든 역할을 하나의 소스에서 순서대로 확인. 구현되지 않은 SDK/장비 함수가 포함된 설계 스케치.
+실제 [AutoPilot 14 Service 전체 예제](AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)와 [실제 Config의 Command + Report 혼합 예제](CONFIG_MIXED_SERVICE_v0.8.6.cpp)가 기본 사용 예제다. 이전 [상속형 서비스 사용자 클래스 스케치](COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)는 **현재 기본 API가 아닌 이전 대안**이다.
 
-## 0. 사용자가 보게 되는 핵심 다섯 줄
-
-```cpp
-vectorConsumer.command(cmd);       // Command 전송
-poseProvider.publish(pose);        // Report 전송
-healthProvider.publish(health);    // 다른 Service도 동일한 함수 이름
-respond(token, umaa::CommandProgress::executing()); // CommandProvider 내부
-publish(token, execution);         // CommandProvider 실행 정보
-```
-
-`cmd` = `UMAA::MO::GlobalVectorControl::GlobalVectorCommandType`, `pose` = `UMAA::SA::GlobalPoseStatus::GlobalPoseReportType`, `health` = `UMAA::SO::HealthReport::HealthReportType`, `execution` = `UMAA::MO::GlobalVectorControl::GlobalVectorExecutionStatusReportType`.
-
-## 1. 생성된 Service 객체를 Component에 조합
+## 1. 생성된 객체 하나가 Service 제공/소비 방향을 표현
 
 ```cpp
 namespace MO = umaa::services::MO;
 namespace SA = umaa::services::SA;
-namespace SO = umaa::services::SO;
 namespace EO = umaa::services::EO;
+namespace SO = umaa::services::SO;
 namespace MM = umaa::services::MM;
 
-using VectorCommand =
-    UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
-using PoseReport =
-    UMAA::SA::GlobalPoseStatus::GlobalPoseReportType;
-
-// 아래 MyVectorProvider / MyPoseConsumer는 2장/4장의 사용자 클래스.
 class AutoPilot : public umaa::Component {
 public:
-    MyVectorProvider vectorControl;       // CommandProvider
-    MyPoseConsumer poseSensor;            // ReportConsumer
-    SO::HealthReportProvider health;      // ReportProvider
+    // Provider (실제 AutoPilot Services)
+    MO::PrimitiveDriverControlProvider primitiveDriver;
+    MO::GlobalVectorControlProvider globalVector;
+    MO::GlobalHoverControlProvider globalHover;
+    MM::ActiveConstraintsControlProvider activeConstraints;
+    EO::UVPlatformSpecsProvider platformSpecs;
+    SO::LogReportProvider logReport;
+    SO::HealthReportProvider healthReport;
 
-    void publishHealth(const UMAA::SO::HealthReport::HealthReportType& msg) {
-        health.publish(msg);
-    }
+    // Consumer (실제 AutoPilot Services)
+    SA::GlobalPoseStatusConsumer globalPose;
+    SA::VelocityStatusConsumer velocity;
+    SA::SpeedStatusConsumer speed;
+    SA::WindStatusConsumer wind;
+    SA::WaterCurrentStatusConsumer waterCurrent;
+    MM::MissionPlanConstraintControlConsumer planConstraint;
+    MM::ConditionalReportConsumer conditionals;
 };
-
-// 사용자 정의 Service 객체의 실제 멤버 포인터를 등록
-UMAA_COMPONENT(AutoPilot, m) {
-    m.add(&AutoPilot::vectorControl);
-    m.add(&AutoPilot::poseSensor);
-    m.add(&AutoPilot::health);
-}
 ```
 
-Service당 전용 `publishGlobalPose`, `setGlobalVector` 메서드는 생성하지 않는다. 생성된 `*Provider/Consumer`는 공통 기반 클래스를 **상속**한다.
+14개 구성과 `m.add(...)` 등록, 실제 Callback 본문은 [AutoPilot 파일](AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)에 있다. `Config/Control/Specs/Status`는 Service 분류이고 `Provider/Consumer`는 방향이다.
 
-## 2. CommandProvider: onCommand / onCancel / respond / publish
+## 2. CommandProvider: onCommand Callback / respond / publish
 
-AutoPilot은 실제 `GlobalVectorCommandType`을 받는다. 상속한 `respond()`와 `publish()`를 직접 호출한다.
+AutoPilot은 `GlobalVectorControl` 명령을 **받는 Provider**다.
 
 ```cpp
-class MyVectorProvider : public MO::GlobalVectorControlProvider {
-public:
-    umaa::CommandDecision onCommand(
-        const VectorCommand& cmd,
-        const umaa::CommandInfo& info) override
-    {
-        // New / Updated / Recovered: 사용자 장비 정책에 따라 다르게 판단
-        if (info.delivery() == umaa::CommandDelivery::Recovered) {
-            return controller_.isAlreadyRunning(info.token())
-                ? umaa::CommandDecision::resume()
-                : umaa::CommandDecision::rejected(
-                    umaa::CommandReason::ServiceFailed);
-        }
+using VectorCmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
+using VectorExecution = UMAA::MO::GlobalVectorControl::
+    GlobalVectorExecutionStatusReportType;
 
-        // 실제 IDL 데이터: direction(), directionMode(), speed()
-        if (!controller_.validate(
-                cmd.direction(), cmd.directionMode(), cmd.speed()))
+// AutoPilot 생성자에서
+globalVector.onCommand(
+    [this](const VectorCmd& cmd, const umaa::CommandInfo& info) {
+        // 필수 direction, directionMode, speed는 원본 IDL 타입 그대로
+        if (!hardware_.validate(cmd))
             return umaa::CommandDecision::rejected(
                 umaa::CommandReason::ValidationFailed);
+        hardware_.execute(cmd, info.token());
+        return umaa::CommandDecision::accepted();
+    });
 
-        controller_.start(cmd, info.token());   // 실제 하드웨어 실행 요청
-        return umaa::CommandDecision::accepted(); // 실행 완료 아님
-    }
-
-    umaa::CancelDecision onCancel(
-        const umaa::CancelInfo& info) override
-    {
-        if (!controller_.requestSafeStop(info.token()))
-            return umaa::CancelDecision::cannotCancel();
-
+globalVector.onCancel(
+    [this](const umaa::CancelInfo& info) {
+        hardware_.requestStop(info.token());
         return umaa::CancelDecision::deferred();
-    }
+    });
 
-    // 이 세 함수는 장비가 호출하는 일반 업무 메서드다.
-    void onHardwareStarted(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::executing());
-    }
-
-    void onHardwareProgress(
-        const umaa::CommandToken& token,
-        const UMAA::MO::GlobalVectorControl::
-            GlobalVectorExecutionStatusReportType& execution)
-    {
-        // 같은 공통 동사 publish, 두 인자이므로 ExecutionStatus
-        publish(token, execution);
-    }
-
-    void onHardwareStopped(const umaa::CommandToken& token) {
-        // 실제 정지 확인 후에만 보고
-        respond(token, umaa::CommandProgress::canceled());
-    }
-
-    void onHardwareCompleted(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::completed());
-    }
-
-private:
-    HardwareController controller_; // 앱에 구현
-};
+// 실제 하드웨어 이벤트를 확인한 후
+globalVector.respond(token, umaa::CommandProgress::executing());
+globalVector.publish(token, executionStatus); // VectorExecution
+globalVector.respond(token, umaa::CommandProgress::canceled()); // 정지 확인
 ```
 
-실제 `GlobalVectorCommandAckReportType`과 `GlobalVectorCommandStatusType` 발행은 SDK가 한다. `GlobalVectorExecutionStatusReportType` 값은 사용자 장비 코드가 생성한다. `onCancel()`만 성공했다고 CANCELED로 확정하지 않는다.
+`accepted`는 접수만 뜻하며 완료가 아니다. Cancel 요청 수락과 실제 CANCELED 상태도 별개다.
 
-## 3. CommandConsumer: command / update / cancel / get / wait / Hook
+## 3. CommandConsumer: command / CommandHandle
 
-### 3.1 가장 단순한 사용: 반환값 없이 Command 발행
+AutoPilot이 **명령을 보내는 실제 Service**는 `MissionPlanConstraintControl`이다.
 
 ```cpp
-class MissionManager : public umaa::Component {
-public:
-    MO::GlobalVectorControlConsumer vector;
+using Add = UMAA::MM::MissionPlanConstraintControl::
+    MissionPlanConstraintAddCommandType;
+using Delete = UMAA::MM::MissionPlanConstraintControl::
+    MissionPlanConstraintDeleteCommandType;
 
-    void navigate() {
-        VectorCommand cmd;
-        fillVectorCommand(cmd); // 실제 방향/속도/모드를 채움
-        vector.command(cmd);     // 단순 명령 전송: 반환값은 무시
-    }
-};
+Add add;
+fillConstraintAdd(add); // 원본 IDL 필드 constraint 등을 채움
 
-UMAA_COMPONENT(MissionManager, m) {
-    m.add(&MissionManager::vector);
-}
+planConstraint.command(add); // 일반 전송: Handle 반환값 무시
+
+auto handle = planConstraint.command(add); // 새 별도의 Command Session
+Add revised = add;
+reviseConstraint(revised);
+handle.update(revised);    // 같은 Session의 갱신 전송
+auto current = handle.get();
+handle.cancel();           // 비동기 취소 요청
+
+Delete remove;
+fillConstraintDelete(remove);
+planConstraint.command(remove); // 타입에 따라 Delete Operation 추론
 ```
 
-실제 `GlobalVectorCommandType`의 C++ 필드 설정 방식은 생성기에 따라 다르다.
+`planConstraint.onStatus(lambda(const MissionPlanConstraintAddCommandStatusType&))` 등 상태 Hook도 원본 IDL 타입으로 등록한다. `CommandHandle<T>`는 ACK/완료 결과가 아닌 로컬 Source/Session 추적 객체이며, 반환값을 버려도 명령이 자동 취소되지 않는다. 한 예제에서 `command(add)`를 두 번 호출하는 것은 **독립적인 두 명령**이다.
+
+## 4. ReportProvider: publish / dispose
 
 ```cpp
-VectorCommand cmd;
-// CASE A: 생성 타입이 공개 데이터 멤버를 제공하는 경우
-cmd.direction     = desiredDirection;
-cmd.directionMode = desiredMode;
-cmd.speed         = desiredSpeedRequirement; // SpeedRequirementVariantType
-vector.command(cmd);
+using Specs = UMAA::EO::UVPlatformSpecs::UVPlatformSpecsReportType;
+using Caps = UMAA::EO::UVPlatformSpecs::UVPlatformCapabilitiesReportType;
+using Health = UMAA::SO::HealthReport::HealthReportType;
 
-// CASE B: 접근자 함수를 제공하는 경우(별도의 매핑 빌드)
-VectorCommand accessorCmd;
-accessorCmd.direction(desiredDirection);
-accessorCmd.directionMode(desiredMode);
-accessorCmd.speed(desiredSpeedRequirement);
-vector.command(accessorCmd);
-```
-
-**CASE A/B를 같은 타입으로 동시에 컴파일하라는 뜻이 아니다.** `speed`는 원본 IDL에서 `SpeedRequirementVariantType`이므로 `newSpeed`가 단순 `double`일 때 곧바로 대입할 수 있다고 가정하지 않는다.
-
-### 3.2 기존 Command를 수정·취소하거나 상태를 추적할 때만 핸들 사용
-
-```cpp
-VectorCommand cmd;
-fillVectorCommand(cmd);
-
-auto handle = vector.command(cmd);     // CommandHandle: 로컬 세션 식별/추적 핸들
-
-VectorCommand updated = cmd;
-updated.speed = newSpeedRequirement; // 공개 데이터 멤버 매핑의 예
-// updated.speed(newSpeedRequirement); // 접근자 매핑에서는 이 문법
-handle.update(updated);                // 실제 갱신 전송은 이 호출에서 발생
-
-auto observation = handle.get();
-auto commanded = handle.wait(umaa::WaitStage::Commanded, 3000);
-
-auto attempt = handle.cancel();        // 취소 요청, 원격 CANCELED 확정 아님
-```
-
-`auto handle`은 **원격 ACK·Response 데이터가 아니다.** `cmd.speed = ...`만으로는 원격 명령이 수정되지 않는다. `update`는 같은 Command Session의 갱신이며, `command(cmd)`의 결과 핸들을 **받지 않아도 전송이 유지**된다. 핸들을 소멸시킨다고 원격 장비가 자동 정지해서는 안 된다.
-
-### 3.3 ACK / Status / ExecutionStatus가 필요하면 Consumer 상속
-
-```cpp
-class MyVectorConsumer : public MO::GlobalVectorControlConsumer {
-public:
-    void onAck(
-        const UMAA::MO::GlobalVectorControl::
-            GlobalVectorCommandAckReportType& ack) override
-    {
-        traceCommandReceived(ack.command()); // 실제 원본 Command 포함
-    }
-
-    void onStatus(
-        const UMAA::MO::GlobalVectorControl::
-            GlobalVectorCommandStatusType& status) override
-    {
-        updateMissionState(status.commandStatus(),
-                           status.commandStatusReason());
-    }
-
-    void onExecutionStatus(
-        const UMAA::MO::GlobalVectorControl::
-            GlobalVectorExecutionStatusReportType& execution) override
-    {
-        if (execution.directionAchieved() && execution.speedAchieved())
-            monitor_.markTargetAchieved();
-    }
-
-    // 복구 Hook은 선택적: SDK가 자동으로 재실행했다고 가정하지 않음
-    umaa::RecoveryDecision onRecoveredCommand(
-        const VectorCommand& previous,
-        const umaa::CommandInfo& info) override
-    {
-        return shouldContinue(previous, info)
-            ? umaa::RecoveryDecision::Continue
-            : umaa::RecoveryDecision::Cancel;
-    }
-
-private:
-    MissionMonitor monitor_;
-};
-```
-
-같은 Service의 여러 Command Operation이 동일한 메시지 타입을 사용하면 `command(message)` 또는 Hook 인자 타입만으로 구분하지 않고 `command<Op>(message)` / `OperationTag<Op>`로 명시한다.
-
-## 4. ReportProvider: publish / dispose / snapshot
-
-```cpp
-class PositionSensor : public umaa::Component {
-public:
-    SA::GlobalPoseStatusProvider pose; // 상속한 publish/dispose 사용
-
-    void sample() {
-        PoseReport report;
-        report.position(sensor_.position());
-        report.attitude(sensor_.attitude());
-        report.course(sensor_.course());
-        report.navigationSolution(sensor_.solution());
-
-        pose.publish(report);              // 일반 Report 발행
-    }
-
-    void invalidateSource(const UMAA::Common::IdentifierType& source) {
-        PoseReport keyed;
-        keyed.source(source);              // key 필드만 필요
-        pose.dispose(keyed);               // 같은 메시지 타입으로 Topic/Key 식별
-    }
-
-    void replaceOwnedPoses(const std::vector<PoseReport>& current) {
-        pose.publish(current,
-            umaa::PublishMode::ReplaceOwnedInstances);
-        // 자기 소유 인스턴스 외의 Key를 Dispose하지 않음
-    }
-
-private:
-    PositionHardware sensor_;
-};
-
-UMAA_COMPONENT(PositionSensor, m) {
-    m.add(&PositionSensor::pose);
-}
-```
-
-하나의 Service가 여러 Report를 제공하는 경우에도 함수 이름은 `publish` 그대로다.
-
-```cpp
-EO::UVPlatformSpecsProvider platform;
-UMAA::EO::UVPlatformSpecs::UVPlatformSpecsReportType specs;
-UMAA::EO::UVPlatformSpecs::UVPlatformCapabilitiesReportType capabilities;
+Specs specs;
+Caps capabilities;
+Health health;
 fillSpecs(specs);
 fillCapabilities(capabilities);
+fillHealth(health);
 
-platform.publish(specs);
-platform.publish(capabilities);
+platformSpecs.publish(specs);
+platformSpecs.publish(capabilities); // 동일 Service의 다른 Operation
+healthReport.publish(health);
+healthReport.dispose(health);       // 실제 IDL의 source/code/resourceID Key 사용
 ```
 
-## 5. ReportConsumer: onReport 원본 타입 / onDispose / ReportInfo
+`dispose`는 원본 IDL의 Key 필드를 기반으로 처리하며, 유효하지 않은 Report 데이터까지 채울 필요는 없다. SDK는 자기 소유 Key를 추적하고 DDS Dispose를 처리한다.
 
-### 5.1 기본형
+## 5. ReportConsumer: onReport / onDispose / 수동 구독
 
 ```cpp
-class MyPoseConsumer : public SA::GlobalPoseStatusConsumer {
-public:
-    void onReport(const PoseReport& pose) override {
-        controller_.updatePosition(pose.position()); // event.data() 불필요
-        controller_.updateAttitude(pose.attitude());
-    }
+using Pose = UMAA::SA::GlobalPoseStatus::GlobalPoseReportType;
 
-    void onDispose(const UMAA::Common::IdentifierType& source) override {
-        controller_.invalidatePose(source);
-    }
-private:
-    NavigationController controller_;
-};
+// AutoPilot 생성자에서
+globalPose.onReport([this](const Pose& pose) {
+    navigation_.update(pose);  // event.data() 없이 실제 IDL 객체
+});
+globalPose.onDispose(
+    [this](const UMAA::Common::IdentifierType& source) {
+        navigation_.invalidate(source);
+    });
 ```
 
-정상 Report의 `onReport`만 데이터 타입을 직접 받고, Dispose의 `onDispose`에는 Key만 전달한다. 유효하지 않은 DDS sample에 존재하지 않는 데이터를 만들지 않는다.
+Callback은 기본적으로 Component 시작부터 자동 구독된다. `ReportInfo`가 필요하면 `onReport(const Pose&, const ReportInfo&)` Callback으로 교체한다. Dispose 수신 시 유효한 `Pose` 객체를 합성해서 넘기지 않는다.
 
-### 5.2 메타데이터가 필요하면 두 인자 Hook을 대신 사용
-
-```cpp
-class DiagnosticPoseConsumer : public SA::GlobalPoseStatusConsumer {
-public:
-    void onReport(
-        const PoseReport& pose,
-        const umaa::ReportInfo& info) override
-    {
-        show(pose.position());
-        logReceiveTime(info.receivedAt());
-    }
-};
-```
-
-데이터만 받는 `onReport(const T&)`와 메타데이터까지 받는 `onReport(const T&, const ReportInfo&)`는 **한 Operation에서 하나를 선택**한다.
-
-### 5.3 필요할 때만 동적으로 request
+동적 구독이 필요할 때는 **자동 구독을 끈 Service 객체**만 수동 등록한다.
 
 ```cpp
-class PoseProbe : public umaa::Component {
-public:
-    SA::GlobalPoseStatusConsumer pose;
-    umaa::Subscription sub;
-
-    void startMonitoring() {
-        sub = pose.request(
-            [this](const PoseReport& report) {
-                show(report.position());
-            });
-    }
-    void stopMonitoring() { sub.close(); }
-};
-
-// 이 객체만 수동 구독 모드로 등록한다.
 UMAA_COMPONENT(PoseProbe, m) {
     m.add(&PoseProbe::pose, umaa::SubscriptionMode::Manual);
 }
+
+// Component 시작 이후의 사용자 메서드에서
+subscription = pose.request(
+    [this](const Pose& sample) { observe(sample); });
+subscription.close(); // 더 이상 수신하지 않음
 ```
 
-일반 Report는 Queryless Request/Reply이며 `request()`는 즉시 RPC 응답 한 번을 요청하는 함수가 아니다. 구독을 시작하고 종료한다.
+일반 UMAA Report의 `request()`는 단발성 RPC가 아니라 Queryless Subscription 시작이다.
 
-### 5.4 최신값 캐시
+## 6. LargeSet + Specialization (실제 AutoPilot Consumer)
 
-```cpp
-auto latest = poseConsumer.getLatest(sourceKey); // C++11 SDK Optional<PoseReport>
-if (latest.hasValue())
-    usePosition(latest.value().position());
-```
-
-캐시 사용은 선택적이며 Dispose된 Key는 최신 유효 데이터로 반환하지 않는다.
-
-## 6. LargeList: EO BatteryStatus
-
-원본 `BatteryReportType`에는 `cellsListMetadata`만 존재한다. Cell Element는 `BatteryReportTypeCellsListElement`라는 **별도 Topic**이다. 따라서 실제 IDL Report는 수정하지 않는다.
+원본 `ConditionalReportType`에는 `conditionalsSetMetadata`가 있으며, Condition Element와 Specialization은 별도 Topic을 사용한다. 원본 Report 구조체에 가상의 `conditionals` 필드를 추가하지 않는다.
 
 ```cpp
-using Battery = UMAA::EO::BatteryStatus::BatteryReportType;
-using Cell = UMAA::EO::BatteryStatus::BatteryCellDataType;
+using Raw = UMAA::MM::ConditionalReport::ConditionalReportType;
+using Base = UMAA::MM::Conditional::ConditionalType;
+using Items = umaa::LargeSet<umaa::Specialized<Base>>;
 
-EO::BatteryStatusProvider batteryProvider;
-
-Battery report;
-fillBatteryState(report);
-umaa::LargeList<Cell> cells;
-
-Cell cell;
-cell.voltage(measuredVoltage);
-cell.current(measuredCurrent);
-cell.temperature(measuredTemperature);
-auto elementId = cells.add(cell);
-
-// 식별자 유지, 갱신
-cell.voltage(newMeasuredVoltage);
-cells.set(elementId, cell);
-
-// 같은 공통 publish. 생성기는 BatteryReportType + CellsList에 매핑.
-batteryProvider.publish(report, cells);
-```
-
-Consumer의 **복합 메시지용 생성 오버로드**:
-
-```cpp
-class BatteryMonitor : public EO::BatteryStatusConsumer {
-public:
-    void onReport(const Battery& raw, const umaa::LargeList<Cell>& cells) override {
-        if (!cells.complete()) return; // Partial과 Complete 구분
-        for (const auto& element : cells.elements())
-            inspectCell(element.voltage());
-    }
-};
-```
-
-대량 요소에는 동기화/부분 수신/삭제/순서·Element ID 유지 규칙이 필요하다. 두 Topic 이상을 DDS가 원자적으로 전달한다고 가정하지 않는다.
-
-## 7. LargeSet + Specialization: MM ConditionalReport
-
-원본 `ConditionalReportType`은 `conditionalsSetMetadata`를 포함한다. 실제 `ConditionalType` Generalization과 `DepthConditionalType` Specialization은 각각 별도 Topic과 ID/Timestamp 연결을 사용한다.
-
-```cpp
-using ConditionalReport = UMAA::MM::ConditionalReport::ConditionalReportType;
-using BaseConditional = UMAA::MM::Conditional::ConditionalType;
-using DepthConditional = UMAA::MM::Conditional::DepthConditionalType;
-using Item = umaa::Specialized<BaseConditional>;
-
-MM::ConditionalReportProvider conditionalProvider;
-
-ConditionalReport report;
-Item condition;
-condition.base().conditionalID(conditionalId);
-condition.base().name(conditionalName);
-
-DepthConditional depth;
-depth.conditionalOp(depthComparisonOp);
-depth.depth(targetDepth);
-condition.set(depth);  // template type deduction: DepthConditional
-
-umaa::LargeSet<Item> items;
-items.add(condition);
-
-conditionalProvider.publish(report, items);
-```
-
-Consumer의 조립된 요소 Hook:
-
-```cpp
-class ConditionalMonitor : public MM::ConditionalReportConsumer {
-public:
-    void onReport(
-        const ConditionalReport& report,
-        const umaa::LargeSet<Item>& items) override
-    {
+conditionals.onReport(
+    [this](const Raw& report, const Items& items) {
         if (!items.complete()) return;
-        for (const auto& item : items.elements()) {
-            if (!item.ready()) continue;
-            if (item.is<DepthConditional>()) {
-                const DepthConditional& depth = item.as<DepthConditional>();
-                evaluateDepth(depth.conditionalOp(), depth.depth());
-            }
-        }
-    }
-};
+        logic_.receivedConditionals(report, items);
+    });
 ```
 
-SDK는 세 종류 Topic을 합치고 `listID/setID`, `elementID`, `specializationReferenceID`, Timestamp의 일관성을 관리한다. Metadata만 수신한 상태와 완성된 객체는 구분해야 한다.
+SDK는 Topic을 조립하고 불완전한 상태·삭제·시간 차이를 구분해야 한다. DDS가 여러 Topic의 원자적 전달을 제공한다고 가정하지 않는다.
 
-## 8. 적용 범위와 미검증 사항
+별도 일반 ReportProvider의 LargeList 예로는 `EO::BatteryStatus::BatteryReportType`와 `LargeList<BatteryCellDataType>`을 `batteryProvider.publish(report, cells)`로 발행하는 API가 있다. 이는 **AutoPilot 공식 14개 Service에 포함되지 않는 확장 사례**다.
 
-이 예제는 **사용자 API의 원하는 사용감**을 정의한다. `m.add` 등록 방식, Service별 자동 생성 virtual Hook, type→Operation 자동 매핑, 동적 구독, 복합 Report 오버로드의 실제 C++11 컴파일 검증 및 DDS 실행은 아직 하지 않았다. 원본 IDL 필드와 Operation 명칭의 매핑에는 ICD/IDL 기반 생성기를 적용해야 하며, 일부 타입 충돌 시 생성기는 추가 tag 인자를 요구할 수 있다. 원본 IDL/생성 클래스는 아직 repository에 완전 구현된 것이 아니다.
+## 7. 실제 Config Service: Command/Response + Queryless Report
 
-> 각 Component 인스턴스의 Service 멤버는 Component보다 오래 살아 있으면 안 된다. `const T&`의 보존 수명은 Callback 동안으로 제한하며 필요 시 복사한다.
+`SA::GlobalPoseConfig`의 실제 UMAA 6.0 IDL에는 `GlobalPoseConfigCommandType`과 `GlobalPoseConfigReportType`이 둘 다 있다. 생성된 `SA::GlobalPoseConfigProvider` 한 객체는 `onCommand()`와 `publish(configReport)`를 모두 지원하며, 생성된 `SA::GlobalPoseConfigConsumer` 한 객체는 `command(configCommand)`와 `onReport()`를 함께 지원한다.
+
+```cpp
+using ConfigCmd = UMAA::SA::GlobalPoseConfig::GlobalPoseConfigCommandType;
+using ConfigReport = UMAA::SA::GlobalPoseConfig::GlobalPoseConfigReportType;
+
+SA::GlobalPoseConfigProvider provider; // 실제 원본 Config Service
+provider.onCommand([](const ConfigCmd& cmd,
+                      const umaa::CommandInfo& info) {
+    processInitialPose(cmd, info.token());
+    return umaa::CommandDecision::accepted();
+});
+provider.publish(configReport); // Queryless Report, CommandStatus와 별도
+
+SA::GlobalPoseConfigConsumer consumer;
+consumer.onReport([](const ConfigReport& report) {
+    observeConfig(report);
+});
+auto handle = consumer.command(configCmd);
+handle.cancel();
+```
+
+주의: 실제 `GlobalPoseConfigReportType`에는 `source`와 `timeStamp`가 있으며, `position`이나 `attitude`를 갖는다고 가정하지 않는다. AutoPilot 공식 14개에 없는 Service다. [정확한 타입과 전체 사용 예제](CONFIG_MIXED_SERVICE_v0.8.6.cpp).
+
+## 8. 내부 구조와 검증 범위
+
+`umaa::Service`가 Component 바인딩/생명주기를 갖고, 생성된 `<ServiceName>Provider/Consumer`가 이를 한 번 상속한다. 내부의 `CommandProvider<S>`, `CommandConsumer<S>`, `ReportProvider<S>`, `ReportConsumer<S>`는 필요한 만큼 **멤버로 합성**한다. Config처럼 두 패턴이 있으면 둘 다 포함한다. 사용자 API에는 공통 동사만 위임한다.
+
+**생성 및 실환경 검증 전:** 위 파일은 SDK 설계 스케치이며 실제 RTI 생성 헤더 C++11 컴파일, DDS 통신, Command 상태/취소/복구, Large Collection 조립은 아직 검증되지 않았다. 원본 IDL 멤버 접근은 공개 변수 또는 접근자 문법 중 실제 생성 매핑을 따른다.
