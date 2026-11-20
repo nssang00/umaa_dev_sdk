@@ -32,6 +32,8 @@ namespace SO = umaa::services::SO;
 namespace EO = umaa::services::EO;
 namespace MM = umaa::services::MM;
 
+#include <vector> // SDK snapshot overload (C++11)
+
 // ----------- Original UMAA 6.0 IDL types ----------------------------------
 using PrimitiveCmd = UMAA::MO::PrimitiveDriverControl::PrimitiveDriverCommandType;
 using VectorCmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
@@ -58,6 +60,10 @@ using ConstraintAddStatus = UMAA::MM::MissionPlanConstraintControl::
     MissionPlanConstraintAddCommandStatusType;
 using ConstraintDeleteStatus = UMAA::MM::MissionPlanConstraintControl::
     MissionPlanConstraintDeleteCommandStatusType;
+using ConstraintAddAck = UMAA::MM::MissionPlanConstraintControl::
+    MissionPlanConstraintAddCommandAckReportType;
+using ConstraintDeleteAck = UMAA::MM::MissionPlanConstraintControl::
+    MissionPlanConstraintDeleteCommandAckReportType;
 using ConditionalReport = UMAA::MM::ConditionalReport::ConditionalReportType;
 using ConditionalBase = UMAA::MM::Conditional::ConditionalType;
 using DepthConditional = UMAA::MM::Conditional::DepthConditionalType;
@@ -261,6 +267,13 @@ class MissionConstraintsConsumer
 public:
     explicit MissionConstraintsConsumer(AutopilotLogic& l) : logic_(l) {}
 
+    void onAck(const ConstraintAddAck& ack) override {
+        // The application may inspect an actual IDL Ack message here.
+        (void)ack;
+    }
+    void onAck(const ConstraintDeleteAck& ack) override {
+        (void)ack;
+    }
     void onStatus(const ConstraintAddStatus& status) override {
         logic_.constraintAddStatus(status);
     }
@@ -338,6 +351,15 @@ public:
         healthReport.publish(health);
     }
 
+    void disposeHealth(const Health& healthWithKeys) {
+        // HealthReportType key = (source, code, resourceID): keyed Report.
+        healthReport.dispose(healthWithKeys);
+    }
+
+    void replaceOwnedHealth(const std::vector<Health>& current) {
+        healthReport.publish(current, umaa::PublishMode::ReplaceOwnedInstances);
+    }
+
     void publishLog(const Log& log) {
         // Real LogReportType: entry, level; SDK manages source/timeStamp.
         logReport.publish(log);
@@ -363,6 +385,10 @@ public:
         const ConstraintAdd& modified)
     {
         handle.update(modified);
+    }
+
+    void cancelConstraint(umaa::CommandHandle<ConstraintAdd>& handle) {
+        handle.cancel(); // cancellation request, not terminal status
     }
 
     // ReportConsumer cache is optional, not a subscription RPC.
