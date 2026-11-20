@@ -4,7 +4,7 @@
 
 ## v0.8.6 decisions to preserve
 
-- **2026-11-20 amendment:** actual UMAA generated struct members may be public variables (e.g. `cmd.speed = requirement`) or C++ generated accessor calls (`cmd.speed(requirement)`); examples must document both and must not assume `SpeedRequirementVariantType` is `double`. Default `vectorConsumer.command(cmd);` ignores returned `CommandCall` when no further control is needed. Returned handle is not ACK/result and its destruction does not cancel remote command; to update the original session, explicitly invoke `call.update(updated)` after changing a local message.
+- **2026-11-20 amendment:** actual UMAA generated struct members may be public variables (e.g. `cmd.speed = requirement`) or C++ generated accessor calls (`cmd.speed(requirement)`); examples must document both and must not assume `SpeedRequirementVariantType` is `double`. Default `vectorConsumer.command(cmd);` ignores returned `CommandHandle` when no further control is needed. Returned handle is not ACK/result and its destruction does not cancel remote command; to update the original session, explicitly invoke `handle.update(updated)` after changing a local message.
 
 - Generate Service-specific classes such as `GlobalVectorControlConsumer` / `GlobalPoseStatusProvider`, each inheriting `CommandProvider/Consumer<S>` or `ReportProvider/Consumer<S>`. Users call **uniform inherited actions** `consumer.command(idlMessage)`, `provider.publish(idlMessage)`, `call.update()` / `call.cancel()`, `provider.respond()`, `provider.publish(token, executionIDL)`.
 - User Hook inputs and publisher arguments are **original UMAA-generated IDL message types**. The SDK `reportGlobalPose` Operation tag is not a generated IDL Data Type and is unnecessary in the default call.
