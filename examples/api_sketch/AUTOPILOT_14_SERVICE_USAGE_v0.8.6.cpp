@@ -15,7 +15,7 @@
  *
  * DESIGN SKETCH ONLY — NOT A COMPILED SDK.
  * SDK-generated classes (umaa::services::*Provider/Consumer), m.add(...),
- * virtual Hooks, CommandHandle, LargeSet, etc. are proposed v0.8.6 APIs.
+ * Callback registration, CommandHandle, LargeSet, etc. are proposed v0.8.6 APIs.
  * Hardware/Navigation/AutopilotLogic and fill... functions are application
  * placeholders. Include the actual generated SDK/IDL headers in implementation.
  *
@@ -94,316 +94,203 @@ struct AutopilotLogic {
 };
 
 // ==========================================================================
-// 1. AutoPilot Providers — actual Service role, typed incoming commands
-// ==========================================================================
-
-class PrimitiveProvider : public MO::PrimitiveDriverControlProvider {
-public:
-    explicit PrimitiveProvider(AutopilotLogic& l) : logic_(l) {}
-    umaa::CommandDecision onCommand(
-        const PrimitiveCmd& cmd, const umaa::CommandInfo& info) override
-    {
-        // Actual fields: propulsiveLinearEffort, propulsiveRotationalEffort,
-        // resistiveLinearEffort, resistiveRotationalEffort.
-        if (!logic_.acceptPrimitive(cmd))
-            return umaa::CommandDecision::rejected(
-                umaa::CommandReason::ValidationFailed);
-        logic_.executePrimitive(cmd, info.token());
-        return umaa::CommandDecision::accepted();
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class VectorProvider : public MO::GlobalVectorControlProvider {
-public:
-    explicit VectorProvider(AutopilotLogic& l) : logic_(l) {}
-    umaa::CommandDecision onCommand(
-        const VectorCmd& cmd, const umaa::CommandInfo& info) override
-    {
-        // Real GlobalVectorCommandType fields:
-        // direction, directionMode, speed; optional elevation, endTime, etc.
-        if (info.delivery() == umaa::CommandDelivery::Recovered) {
-            return logic_.isExecutingVector(info.token())
-                ? umaa::CommandDecision::resume()
-                : umaa::CommandDecision::rejected(
-                    umaa::CommandReason::ServiceFailed);
-        }
-        if (!logic_.acceptVector(cmd))
-            return umaa::CommandDecision::rejected(
-                umaa::CommandReason::ValidationFailed);
-        logic_.executeVector(cmd, info.token());
-        return umaa::CommandDecision::accepted(); // not execution complete
-    }
-
-    umaa::CancelDecision onCancel(const umaa::CancelInfo& info) override {
-        return logic_.requestVectorStop(info.token())
-            ? umaa::CancelDecision::deferred()
-            : umaa::CancelDecision::cannotCancel();
-    }
-
-    void hardwareExecuting(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::executing());
-    }
-    void hardwareProgress(
-        const umaa::CommandToken& token,
-        const VectorExec& state)
-    {
-        // state.directionAchieved, elevationAchieved, speedAchieved.
-        publish(token, state);
-    }
-    void hardwareCompleted(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::completed());
-    }
-    void hardwareStopped(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::canceled());
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class HoverProvider : public MO::GlobalHoverControlProvider {
-public:
-    explicit HoverProvider(AutopilotLogic& l) : logic_(l) {}
-    umaa::CommandDecision onCommand(
-        const HoverCmd& cmd, const umaa::CommandInfo& info) override
-    {
-        // Actual fields: position, hoverRadius, controlPriority,
-        // transitSpeed, optional heading/elevation/endTime.
-        if (!logic_.acceptHover(cmd))
-            return umaa::CommandDecision::rejected(
-                umaa::CommandReason::ValidationFailed);
-        logic_.executeHover(cmd, info.token());
-        return umaa::CommandDecision::accepted();
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class ActiveProvider : public MM::ActiveConstraintsControlProvider {
-public:
-    explicit ActiveProvider(AutopilotLogic& l) : logic_(l) {}
-    umaa::CommandDecision onCommand(
-        const ActiveCmd& cmd, const umaa::CommandInfo& info) override
-    {
-        // Actual field: sequence<NumericGUID,256> constraintConditionalIDs.
-        if (!logic_.acceptActive(cmd))
-            return umaa::CommandDecision::rejected(
-                umaa::CommandReason::ValidationFailed);
-        logic_.executeActive(cmd, info.token());
-        return umaa::CommandDecision::accepted();
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-// ==========================================================================
-// 2. AutoPilot Consumers — actual SA Report types, direct onReport()
-// ==========================================================================
-
-class PoseConsumer : public SA::GlobalPoseStatusConsumer {
-public:
-    explicit PoseConsumer(AutopilotLogic& l) : logic_(l) {}
-    void onReport(const Pose& pose) override {
-        // Real fields: position, attitude, course, navigationSolution.
-        logic_.receivedPose(pose); // no ReportEvent.data() wrapper
-    }
-    void onDispose(const UMAA::Common::IdentifierType& source) override {
-        logic_.poseInvalidated(source);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class VelocityConsumer : public SA::VelocityStatusConsumer {
-public:
-    explicit VelocityConsumer(AutopilotLogic& l) : logic_(l) {}
-    void onReport(const Velocity& data) override {
-        // Real fields: velocity, attitudeRate.
-        logic_.receivedVelocity(data);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class SpeedConsumer : public SA::SpeedStatusConsumer {
-public:
-    explicit SpeedConsumer(AutopilotLogic& l) : logic_(l) {}
-    void onReport(const Speed& data) override {
-        // Real optional fields: speedOverGround, speedThroughWater,
-        // speedThroughAir, mode; do not assume every optional is present.
-        logic_.receivedSpeed(data);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class WindConsumer : public SA::WindStatusConsumer {
-public:
-    explicit WindConsumer(AutopilotLogic& l) : logic_(l) {}
-    void onReport(const Wind& data) override {
-        // WindReportType includes optional relative wind measurements.
-        logic_.receivedWind(data);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-class CurrentConsumer : public SA::WaterCurrentStatusConsumer {
-public:
-    explicit CurrentConsumer(AutopilotLogic& l) : logic_(l) {}
-    void onReport(const WaterCurrent& data) override {
-        // Real fields: currentDirection, currentSpeed.
-        logic_.receivedCurrent(data);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-// CommandConsumer: AutoPilot sends ADD/DELETE to MissionPlanConstraintControl.
-// These are two different actual IDL Command types inside one Service.
-class MissionConstraintsConsumer
-    : public MM::MissionPlanConstraintControlConsumer {
-public:
-    explicit MissionConstraintsConsumer(AutopilotLogic& l) : logic_(l) {}
-
-    void onAck(const ConstraintAddAck& ack) override {
-        // The application may inspect an actual IDL Ack message here.
-        (void)ack;
-    }
-    void onAck(const ConstraintDeleteAck& ack) override {
-        (void)ack;
-    }
-    void onStatus(const ConstraintAddStatus& status) override {
-        logic_.constraintAddStatus(status);
-    }
-    void onStatus(const ConstraintDeleteStatus& status) override {
-        logic_.constraintDeleteStatus(status);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-// Specialization + LargeSet is a CONSUMED ConditionalReport for AutoPilot.
-class ConditionalConsumer : public MM::ConditionalReportConsumer {
-public:
-    explicit ConditionalConsumer(AutopilotLogic& l) : logic_(l) {}
-
-    void onReport(
-        const ConditionalReport& report,
-        const ConditionalSet& assembled) override
-    {
-        // Actual ConditionalReportType has conditionalsSetMetadata,
-        // not a synthetic "report.conditionals" vector.
-        if (!assembled.complete()) return; // SDK assembly state
-        logic_.receivedConditionals(report, assembled);
-    }
-private:
-    AutopilotLogic& logic_;
-};
-
-// ==========================================================================
-// 3. AutoPilot Component: exactly 14 original Service roles
+// 1. AutoPilot Component: generated Service role objects as MEMBERS
+//    The application does not subclass each Provider/Consumer.
 // ==========================================================================
 
 class AutoPilot : public umaa::Component {
 public:
-    // Provider 7:
-    PrimitiveProvider primitiveDriver;       // MO PrimitiveDriverControl
-    VectorProvider globalVector;             // MO GlobalVectorControl
-    HoverProvider globalHover;               // MO GlobalHoverControl
-    ActiveProvider activeConstraints;        // MM ActiveConstraintsControl
-    EO::UVPlatformSpecsProvider platformSpecs;// EO UVPlatformSpecs
-    SO::LogReportProvider logReport;         // SO LogReport
-    SO::HealthReportProvider healthReport;   // SO HealthReport
+    // Official 7 Service Providers
+    MO::PrimitiveDriverControlProvider primitiveDriver;
+    MO::GlobalVectorControlProvider globalVector;
+    MO::GlobalHoverControlProvider globalHover;
+    MM::ActiveConstraintsControlProvider activeConstraints;
+    EO::UVPlatformSpecsProvider platformSpecs;
+    SO::LogReportProvider logReport;
+    SO::HealthReportProvider healthReport;
 
-    // Consumer 7:
-    PoseConsumer globalPose;                 // SA GlobalPoseStatus
-    VelocityConsumer velocity;               // SA VelocityStatus
-    SpeedConsumer speed;                     // SA SpeedStatus
-    WindConsumer wind;                       // SA WindStatus
-    CurrentConsumer waterCurrent;            // SA WaterCurrentStatus
-    MissionConstraintsConsumer planConstraint;// MM MissionPlanConstraintControl
-    ConditionalConsumer conditionals;       // MM ConditionalReport
+    // Official 7 Service Consumers
+    SA::GlobalPoseStatusConsumer globalPose;
+    SA::VelocityStatusConsumer velocity;
+    SA::SpeedStatusConsumer speed;
+    SA::WindStatusConsumer wind;
+    SA::WaterCurrentStatusConsumer waterCurrent;
+    MM::MissionPlanConstraintControlConsumer planConstraint;
+    MM::ConditionalReportConsumer conditionals;
 
-    explicit AutoPilot(AutopilotLogic& l)
-        : primitiveDriver(l),
-          globalVector(l),
-          globalHover(l),
-          activeConstraints(l),
-          globalPose(l),
-          velocity(l),
-          speed(l),
-          wind(l),
-          waterCurrent(l),
-          planConstraint(l),
-          conditionals(l) {}
+    explicit AutoPilot(AutopilotLogic& logic) : logic_(logic) {
+        // Command/Response Provider 1: PrimitiveDriverControl
+        primitiveDriver.onCommand(
+            [this](const PrimitiveCmd& cmd, const umaa::CommandInfo& info) {
+                // IDL fields include propulsiveLinearEffort, etc.
+                if (!logic_.acceptPrimitive(cmd))
+                    return rejectInvalid();
+                logic_.executePrimitive(cmd, info.token());
+                return umaa::CommandDecision::accepted();
+            });
 
-    // ReportProvider: two REAL UVPlatformSpecs Operation data types.
-    void publishSpecs(const Specs& specs, const Capabilities& caps) {
-        platformSpecs.publish(specs); // reportUVPlatformSpecs
-        platformSpecs.publish(caps);  // reportUVPlatformCapabilities
+        // Command/Response Provider 2: GlobalVectorControl
+        globalVector.onCommand(
+            [this](const VectorCmd& cmd, const umaa::CommandInfo& info) {
+                if (info.delivery() == umaa::CommandDelivery::Recovered) {
+                    return logic_.isExecutingVector(info.token())
+                        ? umaa::CommandDecision::resume()
+                        : umaa::CommandDecision::rejected(
+                              umaa::CommandReason::ServiceFailed);
+                }
+                // Real fields: direction / directionMode / speed.
+                // speed: SpeedRequirementVariantType (not plain double).
+                if (!logic_.acceptVector(cmd))
+                    return rejectInvalid();
+                logic_.executeVector(cmd, info.token());
+                return umaa::CommandDecision::accepted();
+            });
+        globalVector.onCancel(
+            [this](const umaa::CancelInfo& info) {
+                return logic_.requestVectorStop(info.token())
+                    ? umaa::CancelDecision::deferred()
+                    : umaa::CancelDecision::cannotCancel();
+            });
+
+        // Command/Response Provider 3: GlobalHoverControl
+        globalHover.onCommand(
+            [this](const HoverCmd& cmd, const umaa::CommandInfo& info) {
+                if (!logic_.acceptHover(cmd))
+                    return rejectInvalid();
+                logic_.executeHover(cmd, info.token());
+                return umaa::CommandDecision::accepted();
+            });
+
+        // Command/Response Provider 4: ActiveConstraintsControl
+        activeConstraints.onCommand(
+            [this](const ActiveCmd& cmd, const umaa::CommandInfo& info) {
+                // Real field: constraintConditionalIDs
+                if (!logic_.acceptActive(cmd))
+                    return rejectInvalid();
+                logic_.executeActive(cmd, info.token());
+                return umaa::CommandDecision::accepted();
+            });
+
+        // Queryless Report Consumers: five actual SA services
+        globalPose.onReport(
+            [this](const Pose& report) { logic_.receivedPose(report); });
+        globalPose.onDispose(
+            [this](const UMAA::Common::IdentifierType& key) {
+                logic_.poseInvalidated(key);
+            });
+        velocity.onReport(
+            [this](const Velocity& report) { logic_.receivedVelocity(report); });
+        speed.onReport(
+            [this](const Speed& report) { logic_.receivedSpeed(report); });
+        wind.onReport(
+            [this](const Wind& report) { logic_.receivedWind(report); });
+        waterCurrent.onReport(
+            [this](const WaterCurrent& report) {
+                logic_.receivedCurrent(report);
+            });
+
+        // Command Consumer: MissionPlanConstraintControl has two Command types
+        planConstraint.onStatus(
+            [this](const ConstraintAddStatus& status) {
+                logic_.constraintAddStatus(status);
+            });
+        planConstraint.onStatus(
+            [this](const ConstraintDeleteStatus& status) {
+                logic_.constraintDeleteStatus(status);
+            });
+
+        // Queryless Report Consumer with LargeSet + Specialization
+        conditionals.onReport(
+            [this](const ConditionalReport& report,
+                   const ConditionalSet& assembled) {
+                if (assembled.complete())
+                    logic_.receivedConditionals(report, assembled);
+            });
     }
 
-    void publishHealth(const Health& health) {
-        // Real HealthReportType: severity, logTime, code, resourceID,
-        // optional status, plus SDK-assigned source/timeStamp.
-        healthReport.publish(health);
+    // ---------- CommandProvider actual hardware events ----------
+
+    void vectorStarted(const umaa::CommandToken& token) {
+        globalVector.respond(token, umaa::CommandProgress::executing());
     }
 
-    void disposeHealth(const Health& healthWithKeys) {
-        // HealthReportType key = (source, code, resourceID): keyed Report.
-        healthReport.dispose(healthWithKeys);
+    void vectorProgress(const umaa::CommandToken& token,
+                        const VectorExec& data) {
+        globalVector.publish(token, data); // ExecutionStatus Report
     }
 
-    void replaceOwnedHealth(const std::vector<Health>& current) {
-        healthReport.publish(current, umaa::PublishMode::ReplaceOwnedInstances);
+    void vectorCompleted(const umaa::CommandToken& token) {
+        globalVector.respond(token, umaa::CommandProgress::completed());
     }
 
-    void publishLog(const Log& log) {
-        // Real LogReportType: entry, level; SDK manages source/timeStamp.
-        logReport.publish(log);
+    void vectorStopped(const umaa::CommandToken& token) {
+        // Confirmed physical stop, not simply onCancel() callback return.
+        globalVector.respond(token, umaa::CommandProgress::canceled());
     }
 
-    // CommandConsumer: AutoPilot sends actual two MM Command types.
-    void addMissionConstraint(const ConstraintAdd& add) {
-        planConstraint.command(add);
+    // ---------- ReportProvider publish / dispose ----------
+
+    void sendPlatformSpecs(const Specs& specs, const Capabilities& caps) {
+        platformSpecs.publish(specs);
+        platformSpecs.publish(caps);
     }
 
-    umaa::CommandHandle<ConstraintAdd> addConstraintWithTracking(
-        const ConstraintAdd& add)
-    {
-        return planConstraint.command(add);
+    void sendHealth(const Health& data) {
+        healthReport.publish(data);
     }
 
-    void deleteMissionConstraint(const ConstraintDelete& remove) {
-        planConstraint.command(remove);
+    void disposeHealth(const Health& keyedReport) {
+        // Original HealthReportType includes key fields source/code/resourceID.
+        healthReport.dispose(keyedReport);
     }
 
-    void updateConstraint(
-        umaa::CommandHandle<ConstraintAdd>& handle,
-        const ConstraintAdd& modified)
-    {
-        handle.update(modified);
+    void sendLog(const Log& data) {
+        logReport.publish(data);
+    }
+
+    // ---------- CommandConsumer command / CommandHandle ----------
+
+    void addConstraintFireAndForget(const ConstraintAdd& cmd) {
+        planConstraint.command(cmd); // returned Handle intentionally ignored
+    }
+
+    umaa::CommandHandle<ConstraintAdd>
+    addConstraint(const ConstraintAdd& cmd) {
+        return planConstraint.command(cmd);
+    }
+
+    void updateConstraint(umaa::CommandHandle<ConstraintAdd>& handle,
+                          const ConstraintAdd& revised) {
+        handle.update(revised);
     }
 
     void cancelConstraint(umaa::CommandHandle<ConstraintAdd>& handle) {
-        handle.cancel(); // cancellation request, not terminal status
+        handle.cancel(); // cancel REQUEST only
     }
 
-    // ReportConsumer cache is optional, not a subscription RPC.
-    void inspectPose(
-        const UMAA::Common::IdentifierType& source,
-        AutopilotLogic& logic)
-    {
+    void deleteConstraint(const ConstraintDelete& cmd) {
+        planConstraint.command(cmd); // distinct operation, inferred from type
+    }
+
+    // ---------- Optional latest valid Report cache ----------
+
+    void useCachedPose(const UMAA::Common::IdentifierType& source) {
         auto latest = globalPose.getLatest(source);
         if (latest.hasValue())
-            logic.receivedPose(latest.value());
+            logic_.receivedPose(latest.value());
     }
+
+private:
+    static umaa::CommandDecision rejectInvalid() {
+        return umaa::CommandDecision::rejected(
+            umaa::CommandReason::ValidationFailed);
+    }
+
+    AutopilotLogic& logic_;
 };
 
 UMAA_COMPONENT(AutoPilot, m) {
-    // Seven Service Providers:
+    // Providers: 7
     m.add(&AutoPilot::primitiveDriver);
     m.add(&AutoPilot::globalVector);
     m.add(&AutoPilot::globalHover);
@@ -412,7 +299,7 @@ UMAA_COMPONENT(AutoPilot, m) {
     m.add(&AutoPilot::logReport);
     m.add(&AutoPilot::healthReport);
 
-    // Seven Service Consumers:
+    // Consumers: 7
     m.add(&AutoPilot::globalPose);
     m.add(&AutoPilot::velocity);
     m.add(&AutoPilot::speed);
@@ -423,64 +310,55 @@ UMAA_COMPONENT(AutoPilot, m) {
 }
 
 // ==========================================================================
-// 4. External caller (e.g. Mission Executor) → AutoPilot Provider
-//    IMPORTANT: GlobalVectorControlConsumer is NOT one of AutoPilot's 14 roles!
+// 2. Other Components use the SAME generated Service-role naming scheme
+//    These are NOT extra AutoPilot Service roles.
 // ==========================================================================
 
-void missionExecutorCommandsAutoPilot(
-    MO::GlobalVectorControlConsumer& remoteVectorConsumer)
+void missionExecutorSendsVector(
+    MO::GlobalVectorControlConsumer& remoteConsumer)
+{
+    VectorCmd cmd;
+    fillGlobalVectorCommand(cmd);    // builds real IDL variant fields
+
+    remoteConsumer.command(cmd);      // simple new Command
+}
+
+void missionExecutorTracksVector(
+    MO::GlobalVectorControlConsumer& remoteConsumer)
 {
     VectorCmd cmd;
     fillGlobalVectorCommand(cmd);
-    // Actual required fields: direction, directionMode, speed;
-    // speed is SpeedRequirementVariantType, NOT an untyped double.
 
-    // Simple fire-and-track-by-system-state usage.
-    remoteVectorConsumer.command(cmd);
-
-    // A separate NEW command instance for a managed session:
-    VectorCmd managed;
-    fillGlobalVectorCommand(managed);
-    auto handle = remoteVectorConsumer.command(managed);
-    VectorCmd changed = managed;
-    reviseGlobalVectorSpeed(changed); // local change only
-    handle.update(changed);          // same Command Session update
-    auto state = handle.wait(umaa::WaitStage::Commanded, 3000);
-    (void)state;
-    handle.cancel();                 // request, not confirmed stop
+    auto handle = remoteConsumer.command(cmd);
+    VectorCmd revised = cmd;
+    reviseGlobalVectorSpeed(revised); // local change only
+    handle.update(revised);          // same Source/Session update
+    handle.cancel();                 // async request, not canceled result
 }
 
-// ==========================================================================
-// 5. External Provider → AutoPilot ReportConsumer (illustration only)
-//    Navigation provides GlobalPoseStatus; AutoPilot consumes it.
-// ==========================================================================
-
 void navigationPublishesPose(
-    SA::GlobalPoseStatusProvider& navigationPoseProvider)
+    SA::GlobalPoseStatusProvider& navigationProvider)
 {
     Pose pose;
-    fillGlobalPose(pose);
-    // Real pose fields: position, attitude, course, navigationSolution.
-    navigationPoseProvider.publish(pose);
+    fillGlobalPose(pose);             // original IDL data
+    navigationProvider.publish(pose);
 }
 
 /*
- * IMPORTANT LIMITATIONS
- *
- * - The 14 members above match actual AutoPilot Component service roles.
- *   The outside references in sections 4-5 are NOT additional AutoPilot roles.
- * - Operation→Topic resolution by message type must be unique per Service/role;
- *   ambiguous cases require the advanced <Op> form.
- * - Component Conflict Policy: the official AutoPilot definition requires a
- *   deliberate policy for conflicts among PrimitiveDriver, GlobalVector,
- *   GlobalHover and among multiple command senders; the SDK cannot invent it.
- * - SDK-proposed Service facade virtual Hooks and m.add registration are not
- *   real compiled classes yet.
- * - The source demonstrates public-field IDL C++ mapping. Accessor mapping is
- *   a different form, e.g. pose.position() and cmd.speed(requirement).
- * - For optional fields, check generated optional representation before read.
- * - CommandHandle tracks source/session; it is not an ACK, remote result or
- *   RAII auto-cancel. Destruction must not stop the remote Command.
- * - DDS cancel, recovery, Queryless subscription, dispose and cross-Topic
- *   LargeSet specialization assembly need real runtime verification.
+ * DESIGN STATUS
+ * - 14 registered Service roles are the official AutoPilot definition,
+ *   not a claim that all 14 are implemented by actual DDS in this repository.
+ * - Generator creates <ServiceName>Provider / <ServiceName>Consumer facades,
+ *   each deriving once from umaa::Service and COMPOSING the supported
+ *   CommandProvider/Consumer<S> or ReportProvider/Consumer<S> roles.
+ * - Callback registration and all facade Actions above are proposed C++11
+ *   interfaces. There is no implemented SDK/RTI-generated header here.
+ * - In C++ generated IDL mapping, fields may be public or accessors.
+ * - ServiceKind suffix cannot alone determine Command/Report pattern.
+ * - Config mixed Command + Report example is in
+ *   CONFIG_MIXED_SERVICE_v0.8.6.cpp (not one of AutoPilot's 14 Services).
+ * - Command conflict policy across GlobalVector/GlobalHover/PrimitiveDriver
+ *   and multiple senders is the application/platform's responsibility.
+ * - SDK hides DDS source/destination/session/timestamps, QoS and
+ *   large collection/specialization wire topics; runtime validation pending.
  */
