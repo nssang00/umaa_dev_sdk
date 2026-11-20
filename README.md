@@ -8,6 +8,7 @@ The SDK goal is to expose actual UMAA IDL business messages while hiding DDS Top
 
 - [HANDOFF.md](HANDOFF.md) — project decisions, validation boundaries, outstanding tasks
 - **[v0.8.6 Public API — authoritative current proposal](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)**
+- **[Complete v0.8.6 C++11 API sketch (single file)](examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)**
 - **[v0.8.6 usage examples — all four roles](examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)**
 - [v0.8.6 change log](docs/current/CHANGELOG_v0.8.6.md)
 - [Previous v0.8.5 API (registration-oriented)](docs/current/UMAA_Component_SDK_Public_API_v0.8.5.md)
