@@ -4,6 +4,8 @@
 
 ## v0.8.6 decisions to preserve
 
+- **AutoPilot reference updated:** [actual 14-Service usage example](examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp), based on RTI/community `UMAA Component Definitions v1.0.md` section 3.1 and original UMAA 6.0 IDL. Seven Providers: MO PrimitiveDriverControl/GlobalVectorControl/GlobalHoverControl; MM ActiveConstraintsControl; EO UVPlatformSpecs; SO LogReport/HealthReport. Seven Consumers: SA GlobalPoseStatus/VelocityStatus/SpeedStatus/WindStatus/WaterCurrentStatus; MM MissionPlanConstraintControl/ConditionalReport. AutoPilot does NOT itself consume GlobalVectorControl nor provide GlobalPoseStatus. Outside-component caller/sensor examples are labeled separately.
+
 - **2026-11-20 amendment:** actual UMAA generated struct members may be public variables (e.g. `cmd.speed = requirement`) or C++ generated accessor calls (`cmd.speed(requirement)`); examples must document both and must not assume `SpeedRequirementVariantType` is `double`. Default `vectorConsumer.command(cmd);` ignores returned `CommandHandle` when no further control is needed. Returned handle is not ACK/result and its destruction does not cancel remote command; to update the original session, explicitly invoke `handle.update(updated)` after changing a local message.
 
 - Generate Service-specific classes such as `GlobalVectorControlConsumer` / `GlobalPoseStatusProvider`, each inheriting `CommandProvider/Consumer<S>` or `ReportProvider/Consumer<S>`. Users call **uniform inherited actions** `consumer.command(idlMessage)`, `provider.publish(idlMessage)`, `handle.update()` / `handle.cancel()`, `provider.respond()`, `provider.publish(token, executionIDL)`.
