@@ -189,40 +189,33 @@ auto attempt = handle.cancel(); // 취소 요청; CANCELED 확정 아님
 
 선택적 CommandConsumer Hook은 원본 `GlobalVectorCommandAckReportType`, `GlobalVectorCommandStatusType`, `GlobalVectorExecutionStatusReportType`를 **직접 인자로** 받는다. 동일 Service의 다수 Operation/Session을 처리하려면 `CommandInfo`를 선택적 두 번째 인자로 받는다. `wait` timeout 및 transport failure와 원격 FAILED는 다르다. `setGlobalVector`는 `endTime`이 없으면 무기한 실행될 수 있으므로 무조건 Terminal까지 대기하는 예제는 피한다.
 
-## 4. CommandProvider: onCommand / onCancel / respond / publish
+## 4. CommandProvider: 생성 객체에 Callback 등록
 
 ```cpp
-class MyVectorProvider : public MO::GlobalVectorControlProvider {
-public:
-    umaa::CommandDecision onCommand(
-        const UMAA::MO::GlobalVectorControl::GlobalVectorCommandType& cmd,
-        const umaa::CommandInfo& info) override
-    {
-        if (!hardwareAccepts(cmd))
-            return umaa::CommandDecision::rejected(
-                umaa::CommandReason::ValidationFailed);
-        hardwareStart(cmd, info.token());
-        return umaa::CommandDecision::accepted(); // 완료 아님
-    }
-    umaa::CancelDecision onCancel(const umaa::CancelInfo& info) override {
-        requestHardwareStop(info.token());
-        return umaa::CancelDecision::deferred();
-    }
-    void hardwareStarted(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::executing());
-    }
-    void hardwareStatus(
-        const umaa::CommandToken& token,
-        const UMAA::MO::GlobalVectorControl::GlobalVectorExecutionStatusReportType& s) {
-        publish(token, s); // 공통 publish: ExecutionStatus Operation 자동 선택
-    }
-    void hardwareStopped(const umaa::CommandToken& token) {
-        respond(token, umaa::CommandProgress::canceled());
-    }
-};
+using VectorCmd = UMAA::MO::GlobalVectorControl::GlobalVectorCommandType;
+MO::GlobalVectorControlProvider vector; // AutoPilot 멤버
+
+// AutoPilot 생성자에서 사용자 Callback 등록
+vector.onCommand([this](const VectorCmd& cmd, const umaa::CommandInfo& info) {
+    if (!hardwareAccepts(cmd))
+        return umaa::CommandDecision::rejected(
+            umaa::CommandReason::ValidationFailed);
+    hardwareStart(cmd, info.token());
+    return umaa::CommandDecision::accepted(); // 접수이지 완료 아님
+});
+vector.onCancel([this](const umaa::CancelInfo& info) {
+    requestHardwareStop(info.token());
+    return umaa::CancelDecision::deferred();
+});
+
+// 실제 장비 이벤트를 받은 뒤 Service 객체의 공통 Action 호출
+vector.respond(token, umaa::CommandProgress::executing());
+vector.publish(token, executionStatus); // GlobalVectorExecutionStatusReportType
+vector.respond(token, umaa::CommandProgress::canceled()); // 정지 확인된 경우만
 ```
 
-`onCommand`는 New/Updated/Recovered 구분을 `info.delivery()`로 받는다. Recovered는 실제 장비 상태를 재확인한 뒤 resume/reject를 결정하며, SDK가 임의로 재시작하지 않는다. 취소 요청과 실제 장비 정지 완료는 구분한다. ACK/CommandStatus 합법 상태 전이와 Session 매핑은 SDK 책임이다.
+Command Provider의 Callback은 원본 IDL Command를 받고, New/Updated/Recovered는 `CommandInfo`로 식별한다. 복구 시 SDK가 하드웨어를 임의로 재시작하지 않는다. ACK/CommandStatus/ExecutionStatus 전이는 내부 Command 역할이 관리한다.
+
 
 ## 5. ReportProvider: publish / dispose
 
@@ -247,23 +240,24 @@ specsProvider.publish(specsReport);             // UVPlatformSpecsReportType
 specsProvider.publish(capabilitiesReport);      // UVPlatformCapabilitiesReportType
 ```
 
-## 6. ReportConsumer: 실제 IDL 타입 직접 Hook
+## 6. ReportConsumer: 생성 객체에 원본 IDL 타입 Callback 등록
 
 ```cpp
-class MyPoseConsumer : public SA::GlobalPoseStatusConsumer {
-public:
-    void onReport(const Pose& pose) override {
-        usePosition(pose.position()); // event.data() 불필요
-    }
-    void onDispose(const UMAA::Common::IdentifierType& source) override {
-        invalidatePose(source);
-    }
-};
+using Pose = UMAA::SA::GlobalPoseStatus::GlobalPoseReportType;
+SA::GlobalPoseStatusConsumer pose; // AutoPilot 멤버
+
+pose.onReport([this](const Pose& report) {
+    updateNavigation(report); // ReportEvent<T>::data() 없이 바로 전달
+});
+pose.onDispose([this](const UMAA::Common::IdentifierType& key) {
+    invalidatePose(key);
+});
 ```
 
-메타데이터가 필요하면 `onReport(const Pose&, const umaa::ReportInfo&)` 오버로드를 사용한다. 동일 Operation에서 둘을 **동시에 호출하지 않으며**, 사용자 구현이 선택한 서명 하나만 정상 데이터 Callback으로 등록된다. 실제 삭제/invalid sample에는 유효한 `Pose`가 없을 수 있어 `onReport(const Pose&)`를 호출하지 않는다. SDK 캐시 무효화와 Dispose/NoWriters 구분은 내부 책임이고, 필요하면 `onUnavailable` 등 추가 Hook으로 원인을 드러낸다.
+메타데이터가 필요하면 선택적 `onReport(const Pose&, const ReportInfo&)` Callback 형태로 대체한다. 동일 Operation에 두 Handler를 중복 호출하지 않는다. DDS Dispose는 유효한 Pose 메시지를 가지고 있지 않을 수 있어 `onDispose(key)`로 구분한다.
 
-**구독 계약:** `m.add(&MyComponent::poseConsumer)`의 기본 동작은 Component 생명주기에 묶인 자동 구독. 임시 구독은 별도의 ReportConsumer 객체를 `m.add(..., SubscriptionMode::Manual)`로 등록하고 `request(handler)`를 호출해 `Subscription` RAII 핸들로 관리한다. 한 Service/Operation에 자동·수동을 섞어 중복 Callback을 일으키지 않는다.
+`m.add(&AutoPilot::pose)`는 기본 자동 구독이다. 동적 구독은 `m.add(&Component::pose, SubscriptionMode::Manual)`로 등록한 객체에서 `pose.request(handler)`를 호출해 Subscription RAII Handle을 받는다. 둘을 같은 S/Op에 동시에 사용하면 `AlreadySubscribed` 처리한다.
+
 
 ## 7. LargeSet / LargeList 및 Specialization: 원본 IDL 유지
 
@@ -302,13 +296,13 @@ Consumer는 `onReport(const BatteryReportType&, const LargeList<BatteryCellDataT
 ## 9. 코드 예제 및 이전 버전 변경
 
 - **[AutoPilot 실제 14개 Service를 사용한 C++11 예제](../../examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — UMAA Component Definitions v1.0 §3.1에 따른 Provider 7 + Consumer 7, 실제 MO/SA/MM/EO/SO IDL 메시지 타입.
-- **[v0.8.6 통합 C++11 API 코드](../../examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 하나의 파일에서 Command/Report 4역할, 명령 추적, Dispose, Request, Large Collection, Specialization, Component 등록을 확인한다.
-- **[v0.8.6 전체 사용 예제](../../examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)** — 네 역할, Command 갱신·취소·상태, Report 삭제, 동적 구독, Multiple Report, Large Collection, Specialization.
+- **[이전 상속/override 대안 스케치](../../examples/api_sketch/COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 현재 기본 Callback 등록 API와 다르며 구현 검증 근거가 아니다.
+- **[역할별 Callback·Action 사용 예제](../../examples/api_sketch/SERVICE_ROLE_USAGE_v0.8.6.md)** — 기본 Callback API, Command 갱신·취소, Report 삭제, 동적 구독, Multiple Report, Large Collection, Specialization.
 - **[기존 v0.8.5 명세](UMAA_Component_SDK_Public_API_v0.8.5.md)** — 등록형 API를 사용한 과거 설계이며 이 문서의 기본 UX와 다르다.
-- `m.provide<S>().onCommand<Op>(...)` → `m.add(&Component::providerMember)` + 생성된 Provider 가상 Hook `onCommand(IDL&, Info)`.
+- `m.provide<S>().onCommand<Op>(...)` → `m.add(&Component::providerMember)` + 생성된 Provider 객체에 `onCommand(lambda)` 등록.
 - `service<S>().commandConsumer().command<Op>(cmd)` → `serviceConsumerMember.command(cmd)`.
 - `service<S>().reportProvider().publish<Op>(report)` → `serviceProviderMember.publish(report)`.
-- `onReport(ReportEvent<T>)` → 기본 `onReport(const T&)` + 선택적 `onDispose(key)` / `ReportInfo`.
+- `onReport(ReportEvent<T>)` → `consumer.onReport(lambda(const T&))` + 선택적 `onDispose(lambda(key))` / `ReportInfo`.
 
 ## 10. 검증 상태 / 남은 게이트
 
