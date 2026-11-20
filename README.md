@@ -4,6 +4,7 @@
 
 ## Start here
 
+- **[Public API Review Brief (user/reviewer overview)](docs/current/UMAA_Component_SDK_API_Review_v0.8.6.md)** — recommended starting point; explains the user-facing API without presenting it as an implemented product manual
 - **[v0.8.6 Public API contract](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)** — current naming, generated facade, Service composition and flow separation
 - **[AutoPilot's actual 14 UMAA 6.0 Services — C++11 example](examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp)** — 7 Providers and 7 Consumers; default Callback model
 - **[Actual mixed Config pattern — GlobalPoseConfig](examples/api_sketch/CONFIG_MIXED_SERVICE_v0.8.6.cpp)** — Command/Response and Queryless Report in one Service Provider/Consumer
