@@ -1,6 +1,6 @@
 # v0.8.6 사용자 사용 예제 — Service별 Provider/Consumer 객체 + 공통 함수
 
-> **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandCall`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. 원본 IDL 생성 타입은 **공개 데이터 멤버(`field = value`) 또는 접근자(`field(value)`/`field()`) 형태**일 수 있다. 예제에서는 상황에 따라 하나를 사용하며, 실제 컴파일 시에는 생성된 타입에 맞춰 선택한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
+> **읽기 전:** [Public API v0.8.6](../../docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md)의 **제안된 SDK facade** 예제다. 원본 UMAA 6.0 IDL의 Data Type 이름은 실제 명칭이지만, `umaa::services::*Provider/Consumer`, `CommandHandle`, `m.add` 등은 생성/구현 예정이며 이 파일 자체는 컴파일 검증된 실 SDK가 아니다. 원본 IDL 생성 타입은 **공개 데이터 멤버(`field = value`) 또는 접근자(`field(value)`/`field()`) 형태**일 수 있다. 예제에서는 상황에 따라 하나를 사용하며, 실제 컴파일 시에는 생성된 타입에 맞춰 선택한다. `fillXXX`/`controller_`/`monitor_`는 사용자 업무 코드 자리다. C++11만 사용한다.
 
 - **[한 파일에 정리한 C++11 전체 API 코드](COMPLETE_FOUR_ROLE_USAGE_v0.8.6.cpp)** — 모든 역할을 하나의 소스에서 순서대로 확인. 구현되지 않은 SDK/장비 함수가 포함된 설계 스케치.
 
@@ -167,17 +167,17 @@ vector.command(accessorCmd);
 VectorCommand cmd;
 fillVectorCommand(cmd);
 
-auto call = vector.command(cmd);     // CommandCall: 로컬 세션 식별/추적 핸들
+auto handle = vector.command(cmd);     // CommandHandle: 로컬 세션 식별/추적 핸들
 
 VectorCommand updated = cmd;
 updated.speed = newSpeedRequirement; // 공개 데이터 멤버 매핑의 예
 // updated.speed(newSpeedRequirement); // 접근자 매핑에서는 이 문법
-call.update(updated);                // 실제 갱신 전송은 이 호출에서 발생
+handle.update(updated);                // 실제 갱신 전송은 이 호출에서 발생
 
-auto observation = call.get();
-auto commanded = call.wait(umaa::WaitStage::Commanded, 3000);
+auto observation = handle.get();
+auto commanded = handle.wait(umaa::WaitStage::Commanded, 3000);
 
-auto attempt = call.cancel();        // 취소 요청, 원격 CANCELED 확정 아님
+auto attempt = handle.cancel();        // 취소 요청, 원격 CANCELED 확정 아님
 ```
 
 `auto call`은 **원격 ACK·Response 데이터가 아니다.** `cmd.speed = ...`만으로는 원격 명령이 수정되지 않는다. `update`는 같은 Command Session의 갱신이며, `command(cmd)`의 결과 핸들을 **받지 않아도 전송이 유지**된다. 핸들을 소멸시킨다고 원격 장비가 자동 정지해서는 안 된다.
