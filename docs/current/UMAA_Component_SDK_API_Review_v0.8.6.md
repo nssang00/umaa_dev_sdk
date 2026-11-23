@@ -1,18 +1,117 @@
 # UMAA Component SDK — Public API Review
 
-> **사용자 설명·설계 검토용 | v0.8.6 기반 | 2026-11-20 | C++11**  
+> **사용자 설명·설계 검토용 | v0.8.6 기반 | 2026-11-23 갱신 | C++11**  
 > **문서 성격:** 제품 매뉴얼·ICD 규범 문서가 아닌 **제안된 공개 API의 검토본**입니다. 아래 예제는 실제 UMAA 6.0 IDL 타입명을 사용하지만, `umaa::services::*Provider/Consumer` 및 SDK 런타임은 **생성·구현 예정**입니다. 전체 코드가 RTI 생성 헤더와 컴파일되거나 DDS 상호운용이 검증되었다는 뜻은 아닙니다.
 
 ## 이 문서의 목적
 
-이 문서만 보고 응용 개발자가 다음 네 질문에 답할 수 있게 하는 것이 목표입니다.
+이 문서만 보고 응용 개발자가 다음 다섯 질문에 답할 수 있게 하는 것이 목표입니다.
 
 1. AutoPilot에서 어떤 Service 객체를 선언해야 하나?
 2. 명령을 보내거나 받으려면 어떤 API를 호출하나?
 3. 상태 Report를 보내거나 받으려면 어떤 API를 호출하나?
 4. Config처럼 Command와 Report가 섞인 Service도 동일한 API를 쓸 수 있나?
+5. Host EXE, Component DLL/SO, SDK Service API는 어떻게 연결되나?
 
 **한 줄 결론:** **Generator가 만든 `<ServiceName>Provider` 또는 `<ServiceName>Consumer`를 Component에 보유하고, Callback을 등록하거나 `command()`·`publish()`·`respond()`를 호출합니다.**
+
+---
+
+## 0. 시스템 배치와 Component 내부 구조
+
+**이 장은 사용자 API를 읽기 전에 실행 환경과 SDK 책임을 이해하기 위한 아키텍처 안내입니다.** 아래 두 그림은 서로 다른 관점을 보여 줍니다. 배치·계층·라이브러리 패키징은 **우리 SDK가 제안하는 구성**이지 UMAA ICD가 강제하는 구조가 아닙니다.
+
+### 0.1 System Deployment View — EXE와 Component DLL/SO
+
+> [원본 배치 다이어그램 HTML 보기](architecture/umaa_distributed_component_architecture_final.html) · 업로드된 원본을 보존했습니다. 각 Host는 **독립 프로세스**이며, 물리 장비 한 대를 뜻하지 않습니다.
+
+```mermaid
+flowchart TB
+  subgraph M["MissionHost.exe · 독립 프로세스"]
+    MH["Host Runtime"] --> ME["MissionExecutor.dll"]
+  end
+  subgraph N["NavEnvHost.exe · 독립 프로세스"]
+    NH["Host Runtime"] --> NAV["USVNavigation.dll"]
+    NH --> WATER["WaterEnvironment.dll"]
+    NH --> WEATHER["Weather.dll"]
+  end
+  BUS[("DDS Logical Data Space\n브로커 없는 논리적 데이터 공간")]
+  subgraph A["ManeuverHost.exe · 독립 프로세스"]
+    AH["Host Runtime"] --> AP["Autopilot.dll"]
+  end
+  subgraph L["LoggingHost.exe · 독립 프로세스"]
+    LH["Host Runtime"] --> LOG["Logging.dll"]
+  end
+  ME <-->|"DDS pub/sub"| BUS
+  NAV <-->|"DDS pub/sub"| BUS
+  WATER <-->|"DDS pub/sub"| BUS
+  WEATHER <-->|"DDS pub/sub"| BUS
+  AP <-->|"DDS pub/sub"| BUS
+  LOG <-->|"DDS pub/sub"| BUS
+```
+
+| Host 프로세스 | 로드하는 Component 라이브러리 | 설계 관점 |
+|---|---|---|
+| `MissionHost.exe` | `MissionExecutor.dll` | Mission Executor가 제어 명령을 전송하는 구성 예 |
+| `NavEnvHost.exe` | `USVNavigation.dll`, `WaterEnvironment.dll`, `Weather.dll` | 여러 Component를 한 프로세스에 로드하는 구성 예 |
+| `ManeuverHost.exe` | `Autopilot.dll` | 실제 AutoPilot Component의 배치 위치 |
+| `LoggingHost.exe` | `Logging.dll` | 별도 로그 처리 Component의 배치 예 |
+
+Host/Component 명칭과 프로세스 그룹핑, `.exe`·`.dll`·`.so` 파일명은 **시스템 배치 예시**입니다. 같은 프로세스에 로드한 DLL은 일반적으로 프로세스 오류 영향을 공유합니다. DDS Data Space는 **중앙 브로커**가 아닙니다.
+
+### 0.2 Component Internal View — Autopilot.dll 내부
+
+> [원본 AutoPilot 내부 다이어그램 HTML 보기](architecture/umaa_autopilot_architecture.html) · 원본에는 프로토콜별 Operation과 DDS Topic의 설명용 축약 표기가 있습니다. **정확한 ICD 이름은 이 문서의 실제 Service/IDL 예제를 우선합니다.**
+
+```mermaid
+flowchart TB
+  USER["User AutoPilot : umaa::Component\n제어·안전 로직 / Callback 등록"]
+  FACADE["Generated Public Service Facades\nGlobalVectorControlProvider · GlobalPoseStatusConsumer\nUVPlatformSpecsProvider · MissionPlanConstraintControlConsumer"]
+  ROLE["SDK Internal Roles (composition)\nCommandProvider/Consumer<S>\nReportProvider/Consumer<S>"]
+  PROTOCOL["UMAA Protocol Engine\nCommand Session / ACK / Status / Queryless Report\nLarge Collection / Specialization"]
+  BACKEND["DDS Backend / DataReader / DataWriter / QoS"]
+  HOST["Component Host Runtime\nPlugin Loader / Lifecycle / Host Config / DDS Context"]
+  USER -->|"command · publish / onCommand · onReport"| FACADE
+  FACADE --> ROLE --> PROTOCOL --> BACKEND
+  HOST -.->|"시작/종료 · 설정 · Runtime Context 제공"| FACADE
+  HOST -.->|"DDS Context / Adapter 공유 정책: 검토 사항"| BACKEND
+```
+
+**Public API 경계:** `AutoPilot`의 사용자 제어 로직과 Callback은 `Autopilot.dll` 안의 응용 코드에 포함될 수 있습니다. 다이어그램 상단의 별도 User Application/Binding 영역은 **C#·Python 등 향후 바인딩을 포함하는 개념적 확장 영역**으로 해석합니다. 현재 사용자 API 검토의 기준은 **C++11**입니다.
+
+### 0.3 Host Runtime과 SDK Runtime의 역할 구분
+
+| 책임 | 제안하는 담당 | 검토 시 주의점 |
+|---|---|---|
+| DLL/SO 로딩·해제, Component 인스턴스 생성/종료 관리 | **Host Runtime** | Host Process가 Component를 로드하고 Lifecycle을 조정 |
+| Host·Component 설정, DDS 환경·QoS 설정 제공 | **Host Runtime** | 설정 소유권과 전달 방식은 구현에서 확정 |
+| `AutoPilot : umaa::Component`, 제어·Safety 로직 | **사용자 Component 코드** | AutoPilot Component는 별도의 EXE가 아니라 라이브러리로 배포 가능 |
+| `<ServiceName>Provider/Consumer` 공개 객체 | **SDK Generator 출력 + SDK Service Runtime** | 생성 객체가 `umaa::Service` 한 번 상속 |
+| 내부 네 역할과 Command/Report 상태·세션 처리 | **SDK Service/Protocol Engine** | 내부 역할은 합성·위임, 사용자 직접 상속 불필요 |
+| DDS Participant·Reader/Writer·QoS·Transport | **Host DDS Context + SDK Backend 연동** | Participant 소유권/공유·벤더별 Adapter 지원은 **미확정** |
+| C#·Python 바인딩, 멀티 DDS 지원, C ABI | **선택적 확장 설계** | 현재 C++11 Public API에 구현·검증됐다는 의미 아님 |
+
+**구분 원칙:** Host Runtime은 Component를 *배치·기동·설정*하고, Component SDK는 각 Service의 *Command/Report 의미와 DDS 매핑*을 처리하며, 사용자 Component는 *업무 판단·제어 로직*을 담당합니다. 두 실행 런타임이 Participant를 중복 생성한다는 뜻은 아닙니다.
+
+### 0.4 배치도에서 Public API까지 이어지는 실제 흐름
+
+```text
+MissionHost.exe / MissionExecutor.dll
+    MO::GlobalVectorControlConsumer.command(GlobalVectorCommandType)
+          ↓  [DDS Command Topic / SDK Session 처리]
+ManeuverHost.exe / Autopilot.dll
+    MO::GlobalVectorControlProvider.onCommand(callback)
+          ↓  [AutoPilot 사용자 제어 로직]
+    provider.respond(token, progress)
+
+NavEnvHost.exe / USVNavigation.dll           (시스템 구성 예)
+    SA::GlobalPoseStatusProvider.publish(GlobalPoseReportType)
+          ↓  [DDS Queryless Report]
+ManeuverHost.exe / Autopilot.dll
+    SA::GlobalPoseStatusConsumer.onReport(callback)
+```
+
+위 **Service와 AutoPilot의 Provider/Consumer 방향**은 기존 API 검토와 일치합니다. 다른 Host의 Component가 그 역할을 수행한다는 배치 관계는 **예시**이며 개별 배포 역할을 별도로 검증한 것은 아닙니다. `GlobalVectorControl`의 ICD 실제 Operation은 `setGlobalVector`, `reportGlobalVectorCommandAck`, `reportGlobalVectorCommandStatus`, `reportGlobalVectorExecutionStatus`입니다. **`cancelGlobalVectorCommand()`를 별도의 ICD Operation이라고 표기하거나 Queryless Report에 존재하지 않는 `query*` Operation을 생성하지 않습니다.** SDK의 `CommandHandle.cancel()`은 취소 요청을 추상화하는 API입니다.
 
 ---
 
