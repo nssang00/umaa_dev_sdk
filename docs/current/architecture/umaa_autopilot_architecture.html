@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>UMAA Autopilot Component | Layered Architecture</title>
+<style>
+  :root { --ink:#182b43; --muted:#61738c; --deep:#193653; --deep2:#305477; --line:#d7e2ed; --bg:#f4f7fb; --surface:#fff; --soft:#f3f6fa; --provider:#16825f; --provider-bg:#eaf7f1; --consumer:#3276bd; --consumer-bg:#edf5ff; --purple:#7355a7; --purple-bg:#f5f0fc; --gold:#ad7a29; --gold-bg:#fff8e9; --shadow:0 10px 35px rgba(18,39,68,.07); }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; color:var(--ink); background:radial-gradient(circle at 10% 0%, #eaf2fc 0, transparent 36%),var(--bg); font-family:system-ui, -apple-system, BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Apple SD Gothic Neo",sans-serif; font-size:14px; line-height:1.55; }
+  button { font:inherit; cursor:pointer; }
+  button:focus-visible, a:focus-visible { outline:3px solid #f3a543; outline-offset:3px; }
+  .shell { max-width:1380px; margin:0 auto; padding:34px 25px 56px; }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:22px; margin-bottom:20px; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:1.8px; text-transform:uppercase; color:#54799b; margin-bottom:5px; }
+  h1 { margin:0; font-size:clamp(24px,2.8vw,35px); letter-spacing:-.9px; line-height:1.24; }
+  .subtitle { margin:9px 0 0; color:var(--muted); font-size:13px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .action-btn { border:1px solid #c8d8e8; background:#fff; color:#29445d; border-radius:9px; padding:9px 12px; font-size:12px; font-weight:700; box-shadow:0 2px 8px #19365308; }
+  .action-btn:hover { background:#ebf3fa; }
+  .action-btn.primary { background:#223f5e; color:white; border-color:#223f5e; }
+  .board { border:2px solid #acc1d5; border-radius:20px; padding:18px; background:#fff; box-shadow:var(--shadow); }
+  .component-title { text-align:center; background:linear-gradient(130deg,#183450,#214667 75%,#2c5271); color:#fff; padding:21px 18px; border-radius:13px; }
+  .component-mark { display:inline-grid; place-items:center; width:29px; height:29px; border:1px solid #89acca55; border-radius:8px; margin-bottom:6px; font-size:17px; }
+  .component-title h2 { font-size:22px; margin:0 0 5px; letter-spacing:-.3px; }
+  .component-title .tagline { color:#cadff0; font-size:12px; margin:0 0 13px; }
+  .binary-pair { display:grid; grid-template-columns:repeat(2,minmax(0,250px)); justify-content:center; gap:10px; }
+  .binary { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; column-gap:10px; min-height:53px; padding:8px 13px; background:#365a7b; border:1px solid #587d9a; border-radius:9px; }
+  .binary strong { font-size:13px; letter-spacing:.2px; }
+  .binary span { color:#cbdfee; font-size:11px; }
+  .layer { border:1px solid var(--line); border-radius:13px; padding:15px; background:#fff; }
+  .layer-head { display:flex; justify-content:space-between; align-items:center; gap:15px; margin-bottom:13px; }
+  .layer-name { display:flex; align-items:center; gap:9px; font-size:14px; font-weight:800; }
+  .layer-count { background:#eaf1f8; border:1px solid #d7e5f1; border-radius:5px; padding:1px 6px; color:#557794; font-size:10px; font-weight:700; }
+  .layer-hint { color:#7b8ea5; font-size:11px; text-align:right; }
+  .icon-box { display:grid; place-items:center; width:27px; height:27px; border-radius:7px; background:#eff4f9; color:#416783; font-size:15px; flex:none; }
+  .connector { display:flex; justify-content:center; align-items:center; gap:9px; color:#7d91a5; height:40px; font-size:11px; }
+  .connector svg { width:13px; height:23px; stroke:#92a3b7; fill:none; stroke-width:1.6; }
+  .management-grid, .protocol-grid, .logic-grid, .lang-grid, .external-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .management-item, .protocol-item, .logic-item { background:var(--soft); border:1px solid #e5ebf2; border-radius:10px; padding:14px; min-height:78px; }
+  .management-item strong,.protocol-item strong,.logic-item strong { display:block; font-size:13px; margin-bottom:4px; }
+  .management-item small,.protocol-item small,.logic-item small { display:block; color:#65788e; font-size:11px; }
+  .app-panel { border:1px solid #ded2ed; background:#fff; border-radius:13px; padding:17px; box-shadow:var(--shadow); }
+  .app-panel .layer-head { margin-bottom:12px; }
+  .lang-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .lang-card { border:1px solid #ded5eb; background:#f8f5fc; border-radius:10px; text-align:center; padding:12px; display:flex; flex-direction:column; gap:7px; }
+  .lang-card strong { font-size:14px; }
+  .lang-logic { background:#fff; border:1px solid #e7dcef; padding:11px 8px; border-radius:8px; font-size:12px; font-weight:700; }
+  .lang-binding { color:#786290; font-size:11px; }
+  .entry-note { font-size:11px; color:#d4e5f4; margin:13px 0 0; }
+  .service-actions { display:flex; align-items:center; gap:7px; }
+  .tiny-btn { border:1px solid #d3dfeb; border-radius:7px; padding:5px 9px; background:#f8fafc; color:#4a6680; font-size:11px; font-weight:700; }
+  .tiny-btn:hover { background:#e9f2fb; }
+  .service-scroll { display:flex; align-items:stretch; gap:12px; overflow-x:auto; padding:3px 2px 14px; scroll-snap-type:x proximity; scrollbar-color:#b6c9db #f0f4f8; scrollbar-width:thin; }
+  .service-scroll::-webkit-scrollbar { height:11px; }
+  .service-scroll::-webkit-scrollbar-track { background:#f0f4f8; border-radius:99px; }
+  .service-scroll::-webkit-scrollbar-thumb { background:#b4c6d9; border-radius:99px; border:2px solid #f0f4f8; }
+  .service-card { flex:0 0 255px; width:255px; display:flex; flex-direction:column; padding:9px; border:1px solid #9ed2bf; border-radius:12px; background:#fff; scroll-snap-align:start; }
+  .service-card.consumer { border-color:#a9c9eb; }
+  .service-header { background:var(--provider-bg); border-radius:8px; padding:12px 10px; min-height:145px; }
+  .service-card.consumer .service-header { background:var(--consumer-bg); }
+  .service-name { font-size:13px; font-weight:800; overflow-wrap:anywhere; text-align:center; line-height:1.4; min-height:36px; }
+  .role { font-size:11px; color:var(--provider); font-weight:800; text-align:center; margin-top:3px; }
+  .consumer .role { color:var(--consumer); }
+  .service-sep { height:1px; background:#cfe3dc; margin:9px 0; }
+  .consumer .service-sep { background:#d2e3f8; }
+  .type-row { display:grid; grid-template-columns:90px 1fr; gap:4px; font-size:11px; margin:4px 0; }
+  .type-row .label { color:#607b85; }
+  .type-row strong { font-weight:800; }
+  .v-arrow { height:25px; display:grid; place-items:center; font-size:17px; color:#91a3b5; }
+  .service-inner { padding:9px; background:#f2f5f9; border-radius:9px; display:flex; flex:1; flex-direction:column; }
+  .interface-box,.ops-box,.topics-box { border:1px solid #dae3ed; border-radius:8px; background:#fff; padding:11px 10px; }
+  .interface-box { text-align:center; }
+  .mini-overline { text-transform:uppercase; letter-spacing:1px; color:#7a8ca2; font-size:9px; font-weight:800; }
+  .interface-box strong { display:block; font-size:12px; margin-top:2px; overflow-wrap:anywhere; }
+  .content-title { font-weight:800; font-size:12px; text-align:center; margin-bottom:9px; }
+  .ops-box { min-height:142px; flex:1; }
+  .ops-list, .topic-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+  .ops-list li { font-size:11px; overflow-wrap:anywhere; line-height:1.45; padding:4px 5px; background:#f8fafc; border-radius:4px; }
+  .ops-list li.key { background:#eaf7f1; color:#1c694e; font-weight:700; }
+  .ops-list li.cancel { background:#eaf1f9; color:#315f91; font-weight:700; }
+  .topics-box { min-height:147px; background:#f4f8fe; border-color:#d1e0f3; }
+  .topics-group { color:#257ac0; font-weight:900; font-size:10px; margin:6px 0 4px; text-transform:uppercase; letter-spacing:.2px; }
+  .topics-group.out { color:#198767; }
+  .topic-list li { font-size:10.8px; overflow-wrap:anywhere; color:#36516c; padding-left:9px; position:relative; line-height:1.35; }
+  .topic-list li:before { content:'•'; position:absolute; left:0; color:#90a7bc; }
+  .topics-foot { border-top:1px solid #d8e5f4; padding-top:8px; margin-top:10px; font-size:10px; color:#6c83a0; }
+  .more-card { flex:0 0 164px; border:1px dashed #b5c8da; border-radius:12px; background:#f4f7fa; padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:9px; }
+  .more-card strong { font-size:34px; color:#8da0b3; line-height:1; }
+  .more-card span { font-weight:800; font-size:12px; }
+  .more-card small { color:#7d8fa3; font-size:11px; }
+  .protocol-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .protocol-item { min-height:84px; }
+  .protocol-item:nth-child(3),.protocol-item:nth-child(4) { background:#fbfcff; }
+  .protocol-item em { display:block; font-size:10px; color:#75899c; margin-top:5px; font-style:normal; }
+  .hook-banner { background:#f8f5fd; border:1px solid #e5d9f3; padding:11px 14px; border-radius:9px; color:#6d528a; font-size:12px; margin-top:11px; }
+  .dds-interface { text-align:center; background:#ebf3fd; border:1px solid #caddf2; border-radius:9px; padding:15px; }
+  .dds-interface strong { display:block; font-size:14px; }
+  .dds-interface small { display:block; font-size:11px; color:#647d9a; margin-top:4px; }
+  .dds-backends { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+  .dds-backend { text-align:center; background:#f5f8fb; border:1px solid #d8e2ec; border-radius:9px; padding:14px 7px; font-size:12px; font-weight:800; }
+  .backend-sub { margin-top:3px; font-size:10px; font-weight:500; color:#72859a; }
+  .external-grid { gap:12px; }
+  .external-box { border:1px solid var(--line); background:white; border-radius:12px; padding:17px; min-height:128px; }
+  .external-box h3 { font-size:13px; margin:0 0 9px; }
+  .external-box .list-inline { font-size:12px; color:#52677c; line-height:1.9; }
+  .external-box .list-inline code { font-size:11px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; background:#f0f4f8; padding:3px 5px; border-radius:4px; }
+  .disclaimer { margin-top:18px; padding:13px 15px; border-left:3px solid #7297b8; background:#eaf1f7; color:#597189; font-size:12px; border-radius:0 7px 7px 0; }
+  .footer { margin:18px 4px 0; text-align:center; color:#8a9caf; font-size:10px; }
+  .compact .service-card { flex-basis:225px; width:225px; }
+  .compact .service-header { min-height:124px; }
+  .compact .service-inner { padding:7px; }
+  .compact .ops-box { min-height:115px; }
+  .compact .topics-box { min-height:120px; }
+  .compact .ops-list { gap:3px; }
+  .compact .ops-list li { padding:3px; }
+  .compact .v-arrow { height:17px; }
+  @media (min-width:1120px) { .service-scroll { padding-bottom:16px; } }
+  @media (max-width:800px) { .shell{padding:22px 12px 35px;} .board{padding:12px;} .pagehead{align-items:flex-start;flex-direction:column;} .actions{justify-content:flex-start;} .component-title h2{font-size:18px;} .service-card{flex-basis:235px;width:235px;} }
+  @media (max-width:560px) { .management-grid,.protocol-grid,.logic-grid,.external-grid { grid-template-columns:1fr; } .lang-grid{gap:6px;} .lang-card{padding:7px;} .lang-logic{font-size:10px;padding:8px 4px;} .lang-binding{font-size:10px;} .binary-pair{grid-template-columns:repeat(2,minmax(0,1fr));}.binary{padding:8px 6px;}.binary strong{font-size:11px;}.layer{padding:11px;}.dds-backends{gap:5px;}.dds-backend{font-size:11px;padding:12px 5px;} }
+  @media print { @page {size:A3 landscape; margin:10mm;} body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;} .shell{max-width:none;padding:0;} .pagehead{margin-bottom:12px;} .actions,.layer-hint,.service-actions{display:none!important;} .board{box-shadow:none; border-color:#aabed1;} .service-scroll{overflow:visible;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;} .service-card{width:auto;min-width:0;flex:none;padding:6px;} .more-card{display:none;} .service-name{font-size:11px;} .service-header{min-height:140px;padding:8px 5px;} .service-inner{padding:5px;} .ops-list li,.topic-list li{font-size:9px;overflow-wrap:anywhere;} .type-row{grid-template-columns:75px 1fr;font-size:9px;} .service-card,.layer,.app-panel,.external-box{break-inside:avoid;} .connector{height:23px;} .disclaimer{font-size:10px;} }
+</style>
+</head>
+<body>
+<main class="shell" id="document">
+  <header class="pagehead">
+    <div><div class="eyebrow">Software architecture · UML/UMAA-inspired component view</div><h1>UMAA Autopilot · Layered Architecture</h1><p class="subtitle">서비스 중심 구조 · 다국어 API · 표준 프로토콜 · DDS 백엔드 · 선택적 알고리즘 배포</p></div>
+    <div class="actions"><button class="action-btn" id="compactButton" type="button" aria-pressed="false">간결하게 보기</button><button class="action-btn primary" onclick="window.print()" type="button">인쇄 / PDF 저장</button></div>
+  </header>
+
+  <section class="app-panel" aria-labelledby="app-title">
+    <div class="layer-head"><div class="layer-name" id="app-title"><span class="icon-box">⌘</span>User Application / Runtime</div><span class="layer-hint">Component 외부 · 사용자 코드 실행</span></div>
+    <div class="lang-grid">
+      <div class="lang-card"><strong>C++</strong><div class="lang-logic">User Business Logic</div><div class="lang-binding">Native C++ API</div></div>
+      <div class="lang-card"><strong>C#</strong><div class="lang-logic">User Business Logic</div><div class="lang-binding">.NET / P/Invoke</div></div>
+      <div class="lang-card"><strong>Python</strong><div class="lang-logic">User Business Logic</div><div class="lang-binding">Python Binding</div></div>
+    </div>
+    <div style="text-align:center;color:#8e79a5;font-size:11px;margin-top:10px">API 호출 ↕ 콜백 / 이벤트</div>
+  </section>
+
+  <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg><span>Exported API · C ABI / Native Interfaces</span></div>
+
+  <section class="board" aria-label="UMAA Autopilot Component architecture">
+    <div class="component-title">
+      <div class="component-mark" aria-hidden="true">⚓</div>
+      <h2>UMAA Autopilot Component</h2>
+      <p class="tagline">One Component · Multiple Services · Shared Library</p>
+      <div class="binary-pair">
+        <div class="binary"><strong>Autopilot.dll</strong><span>Windows</span></div>
+        <div class="binary"><strong>libAutopilot.so</strong><span>Linux</span></div>
+      </div>
+      <p class="entry-note">Exported Entry Points: Create · Configure · Start · Stop · Register Handler · Destroy</p>
+    </div>
+
+    <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 19l4 4 4-4"/></svg></div>
+    <section class="layer" aria-labelledby="mgmt-title">
+      <div class="layer-head"><div class="layer-name" id="mgmt-title"><span class="icon-box">⚙</span>L1 — Component Management</div><span class="layer-hint">컴포넌트 공통 관리 기능</span></div>
+      <div class="management-grid">
+        <div class="management-item"><strong>Component Manager</strong><small>Lifecycle · Service Registry · Instance Management</small></div>
+        <div class="management-item"><strong>Configuration Manager</strong><small>Component · Enabled Services · DDS · Topic QoS</small></div>
+        <div class="management-item"><strong>Handler Registry / Execution</strong><small>User Callbacks · Dispatch Queue · Thread Policy</small></div>
+        <div class="management-item"><strong>Error / Health Manager</strong><small>Fault · Timeout · Diagnostics · Safe-state Policy</small></div>
+      </div>
+    </section>
+
+    <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg></div>
+
+    <section class="layer" aria-labelledby="services-title">
+      <div class="layer-head"><div class="layer-name" id="services-title"><span class="icon-box">▦</span>L2 — Services / Interfaces <span class="layer-count">대표 서비스</span></div><div class="service-actions"><button class="tiny-btn" id="moveLeft" type="button" aria-label="서비스 목록 왼쪽으로 이동">◀</button><button class="tiny-btn" id="moveRight" type="button" aria-label="서비스 목록 오른쪽으로 이동">▶</button><span class="layer-hint">가로 스크롤</span></div></div>
+      <div class="service-scroll" id="serviceScroll" tabindex="0" role="region" aria-label="서비스 카드 가로 스크롤 영역">
+        <article class="service-card provider">
+          <div class="service-header"><div class="service-name">GlobalVectorControl</div><div class="role">Provider Service</div><div class="service-sep"></div><div class="type-row"><span class="label">├─ Service Type:</span><strong>Control</strong></div><div class="type-row"><span class="label">└─ Flow Control:</span><strong>Command / Response</strong></div></div>
+          <div class="v-arrow">↓</div><div class="service-inner"><div class="interface-box"><div class="mini-overline">Interface</div><strong>GlobalVectorControl</strong></div><div class="v-arrow">↓</div><div class="ops-box"><div class="content-title">Operations</div><ul class="ops-list"><li class="key">setGlobalVector()</li><li class="cancel">cancelGlobalVectorCommand()</li><li>query* / report* 계열</li></ul></div><div class="v-arrow">↓</div><div class="topics-box"><div class="content-title">◉ DDS Topics</div><div class="topics-group">↓ Subscribe</div><ul class="topic-list"><li>GlobalVectorCommand</li></ul><div class="topics-group out">↑ Publish</div><ul class="topic-list"><li>GlobalVectorCommandStatus</li><li>GlobalVectorCommandAckReport</li><li>GlobalVectorExecutionStatusReport</li></ul><div class="topics-foot">QoS Profile Mapping · Cancel → dispose</div></div></div>
+        </article>
+        <article class="service-card provider">
+          <div class="service-header"><div class="service-name">GlobalHoverControl</div><div class="role">Provider Service</div><div class="service-sep"></div><div class="type-row"><span class="label">├─ Service Type:</span><strong>Control</strong></div><div class="type-row"><span class="label">└─ Flow Control:</span><strong>Command / Response</strong></div></div>
+          <div class="v-arrow">↓</div><div class="service-inner"><div class="interface-box"><div class="mini-overline">Interface</div><strong>GlobalHoverControl</strong></div><div class="v-arrow">↓</div><div class="ops-box"><div class="content-title">Operations</div><ul class="ops-list"><li class="key">setGlobalHover()</li><li class="cancel">cancelGlobalHoverCommand()</li><li>query* / report* 계열</li></ul></div><div class="v-arrow">↓</div><div class="topics-box"><div class="content-title">◉ DDS Topics</div><div class="topics-group">↓ Subscribe</div><ul class="topic-list"><li>GlobalHoverCommand</li></ul><div class="topics-group out">↑ Publish</div><ul class="topic-list"><li>Command Status / Ack / Execution Reports</li></ul><div class="topics-foot">QoS Profile Mapping · Cancel → dispose</div></div></div>
+        </article>
+        <article class="service-card provider">
+          <div class="service-header"><div class="service-name">UVPlatformSpecs</div><div class="role">Provider Service</div><div class="service-sep"></div><div class="type-row"><span class="label">├─ Service Type:</span><strong>Specs</strong></div><div class="type-row"><span class="label">└─ Flow Control:</span><strong>Request / Reply</strong></div></div>
+          <div class="v-arrow">↓</div><div class="service-inner"><div class="interface-box"><div class="mini-overline">Interface</div><strong>UVPlatformSpecs</strong></div><div class="v-arrow">↓</div><div class="ops-box"><div class="content-title">Operations</div><ul class="ops-list"><li>query* (구독 / 요청)</li><li>report* (데이터 제공)</li><li>set / cancel 해당 없음</li></ul></div><div class="v-arrow">↓</div><div class="topics-box"><div class="content-title">◉ DDS Topics</div><div class="topics-group out">↑ Publish</div><ul class="topic-list"><li>Platform Specs 관련 Report</li><li>Capabilities 관련 Report</li></ul><div class="topics-foot">QoS Profile Mapping · ICD별 명칭 확인</div></div></div>
+        </article>
+        <article class="service-card consumer">
+          <div class="service-header"><div class="service-name">GlobalPoseStatus</div><div class="role">Consumer Service</div><div class="service-sep"></div><div class="type-row"><span class="label">├─ Service Type:</span><strong>StatusReport</strong></div><div class="type-row"><span class="label">└─ Flow Control:</span><strong>Request / Reply</strong></div></div>
+          <div class="v-arrow">↓</div><div class="service-inner"><div class="interface-box"><div class="mini-overline">Interface</div><strong>GlobalPoseStatus</strong></div><div class="v-arrow">↓</div><div class="ops-box"><div class="content-title">Operations</div><ul class="ops-list"><li>query* (Report 구독)</li><li>report* (수신 / 상태 반영)</li><li>set / cancel 해당 없음</li></ul></div><div class="v-arrow">↓</div><div class="topics-box"><div class="content-title">◉ DDS Topics</div><div class="topics-group">↓ Subscribe</div><ul class="topic-list"><li>GlobalPose 관련 Report</li></ul><div class="topics-foot">QoS Profile Mapping · ICD별 명칭 확인</div></div></div>
+        </article>
+        <article class="service-card consumer">
+          <div class="service-header"><div class="service-name">SpeedStatus</div><div class="role">Consumer Service</div><div class="service-sep"></div><div class="type-row"><span class="label">├─ Service Type:</span><strong>StatusReport</strong></div><div class="type-row"><span class="label">└─ Flow Control:</span><strong>Request / Reply</strong></div></div>
+          <div class="v-arrow">↓</div><div class="service-inner"><div class="interface-box"><div class="mini-overline">Interface</div><strong>SpeedStatus</strong></div><div class="v-arrow">↓</div><div class="ops-box"><div class="content-title">Operations</div><ul class="ops-list"><li>query* (Report 구독)</li><li>report* (수신 / 상태 반영)</li><li>set / cancel 해당 없음</li></ul></div><div class="v-arrow">↓</div><div class="topics-box"><div class="content-title">◉ DDS Topics</div><div class="topics-group">↓ Subscribe</div><ul class="topic-list"><li>SpeedStatus 관련 Report</li></ul><div class="topics-foot">QoS Profile Mapping · ICD별 명칭 확인</div></div></div>
+        </article>
+        <div class="more-card" aria-label="추가 서비스 축약"><strong>…</strong><span>Other Services</span><small>Provider / Consumer</small><small>PrimitiveDriverControl<br>HealthReport<br>VelocityStatus<br>…</small></div>
+      </div>
+      <div style="color:#7f91a5;font-size:11px;margin-top:6px">Service Type: Control · Config · Specs · StatusReport / Service별 Provider·Consumer 역할에 따라 Operation·Topic 방향이 달라짐</div>
+    </section>
+
+    <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg><span>공통 통신 패턴 및 DDS 데이터 처리</span></div>
+    <section class="layer" aria-labelledby="protocol-title">
+      <div class="layer-head"><div class="layer-name" id="protocol-title"><span class="icon-box">⇄</span>L3 — UMAA Protocol Engine</div><span class="layer-hint">Service가 공통으로 재사용하는 내부 기능</span></div>
+      <div class="protocol-grid">
+        <div class="protocol-item"><strong>Command / Response</strong><small>Set · Cancel · Ack · Command Status · Execution Status</small><em>Control / Config 중심 · Session / Recovery</em></div>
+        <div class="protocol-item"><strong>Request / Reply</strong><small>Query · Report · Subscription · Report Lifecycle</small><em>Specs / StatusReport 중심</em></div>
+        <div class="protocol-item"><strong>Large Collections</strong><small>Large Set (unordered) · Large List (ordered)</small><em>Collection Metadata · Element Synchronization</em></div>
+        <div class="protocol-item"><strong>Generalization / Specialization</strong><small>Data Correlation · Timestamp / Identifier Matching</small><em>일반/특화 데이터의 일관된 조합</em></div>
+      </div>
+    </section>
+
+    <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg><span>Service 내부 API · 등록된 사용자 Handler 실행</span></div>
+    <section class="layer" aria-labelledby="logic-title">
+      <div class="layer-head"><div class="layer-name" id="logic-title"><span class="icon-box">▣</span>L4 — Service Logic / Business Logic Hooks</div></div>
+      <div class="logic-grid"><div class="logic-item"><strong>Command Arbitration</strong><small>명령 출처 / 우선순위 / 충돌 중재</small></div><div class="logic-item"><strong>Control Loop</strong><small>제어 주기 / 상태 추적 / 출력 계산</small></div><div class="logic-item"><strong>User Handler Invocation</strong><small>Callbacks · Event Queue · Error Boundary</small></div><div class="logic-item"><strong>Safety / Constraint Logic</strong><small>유효성 검사 · 안전 상태 · 제약 조건</small></div></div>
+      <div class="hook-banner">사용자 비즈니스 로직은 C++ · C# · Python 애플리케이션에 존재하며, Component는 등록된 Handler를 호출하는 구조를 기본으로 함.</div>
+    </section>
+
+    <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg><span>선택된 DDS 구현으로 통신</span></div>
+    <section class="layer" aria-labelledby="dds-title">
+      <div class="layer-head"><div class="layer-name" id="dds-title"><span class="icon-box">⌁</span>L5 — DDS Backend Abstraction</div></div>
+      <div class="dds-interface"><strong>IDdsBackend / QoS Resolver</strong><small>Participant · DataReader · DataWriter · QoS · Discovery · Dispose · IDL Mapping</small></div>
+      <div class="v-arrow" style="margin:3px 0">↓</div>
+      <div class="dds-backends"><div class="dds-backend">RTI Connext<div class="backend-sub">RTI adapter</div></div><div class="dds-backend">Cyclone DDS<div class="backend-sub">Cyclone adapter</div></div><div class="dds-backend">SmartDDS<div class="backend-sub">SmartDDS adapter</div></div></div>
+      <div style="color:#7e91a4;font-size:11px;text-align:center;margin-top:11px">설정에 따라 지원되는 백엔드 하나를 선택 · 벤더별 호환성 / 지원 기능은 별도 검증</div>
+    </section>
+  </section>
+
+  <div class="connector" aria-hidden="true"><svg viewBox="0 0 14 24"><path d="M7 1v22M3 5l4-4 4 4M3 19l4 4 4-4"/></svg><span>외부 설정 / 선택적 라이브러리 의존성 / DDS Data Bus</span></div>
+  <div class="external-grid">
+    <section class="external-box"><h3>📄 Component Config / Manifest</h3><div class="list-inline"><code>component.yaml</code> Service 활성화 · 설정값<br><code>dds_qos.xml</code> DDS QoS / Domain / Transport<br><code>manifest.json</code> ICD 버전 · ABI · 종속성 목록</div></section>
+    <section class="external-box"><h3>📦 Algorithm Libraries / DDS Bus</h3><div class="list-inline"><code>libpid.so</code> PID Control<br><code>libguidance.so</code> LOS Guidance<br>필요한 바이너리만 배포 · DDS Data Bus에 외부 Component 연결</div></section>
+  </div>
+
+  <aside class="disclaimer"><strong>범위와 표준 구분:</strong> 본 문서는 기존 논의 내용을 시각화한 <strong>제안 아키텍처</strong>야. 대표 Service의 일부 Topic/Operation은 축약·설명용 표기이며, 정확한 이름과 의무 구현 범위는 적용 대상 UMAA ICD/IDL 버전으로 확정해야 해. <strong>Service 내부 구현, C ABI, 언어 바인딩, 프로토콜 엔진, DDS Adapter 및 DLL/SO 패키징은 UMAA가 강제하는 계층이 아니라 설계 선택</strong>이야. 공유 라이브러리로 링크된 의존성은 최종 Component 바이너리에 자동으로 합쳐지지 않아.</aside>
+  <footer class="footer">UMAA Autopilot Component · Self-contained HTML Architecture · Offline View</footer>
+</main>
+<script>
+(function(){
+  const root=document.getElementById('document');
+  const compact=document.getElementById('compactButton');
+  const scroll=document.getElementById('serviceScroll');
+  const step=270;
+  compact.addEventListener('click',function(){const active=root.classList.toggle('compact'); compact.textContent=active?'상세하게 보기':'간결하게 보기'; compact.setAttribute('aria-pressed',String(active));});
+  document.getElementById('moveLeft').addEventListener('click',function(){scroll.scrollBy({left:-step,behavior:'smooth'});});
+  document.getElementById('moveRight').addEventListener('click',function(){scroll.scrollBy({left:step,behavior:'smooth'});});
+})();
+</script>
+</body>
+</html>
