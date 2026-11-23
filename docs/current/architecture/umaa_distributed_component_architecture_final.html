@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="light" name="color-scheme"/>
+<title>UMAA Distributed Component Architecture</title>
+<style>
+  :root {
+    --navy: #1e3855;
+    --navy-2: #274765;
+    --ink: #23364b;
+    --muted: #60758a;
+    --line: #c8d6e3;
+    --soft: #f2f6fa;
+    --blue-soft: #e9f2fb;
+    --blue: #407cae;
+    --green: #267d40;
+    --green-dark: #1f6935;
+    --green-soft: #eaf5ec;
+    --canvas: #edf2f7;
+    --white: #fff;
+    --shadow: 0 10px 30px rgba(29, 55, 81, .09);
+  }
+  * {box-sizing:border-box}
+  body {margin:0; background:var(--canvas); color:var(--ink); font-family:Inter, Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing:antialiased;}
+  .page {max-width:1460px; margin:0 auto; padding:32px 26px 40px;}
+  .head {display:flex; justify-content:space-between; align-items:flex-end; gap:18px; margin-bottom:18px;}
+  .eyebrow {font-size:12px; font-weight:800; letter-spacing:1.3px; color:#51826d; margin-bottom:6px;}
+  h1 {font-size:27px; line-height:1.25; letter-spacing:-.7px; margin:0 0 7px; color:var(--navy);}
+  .subtitle {font-size:13px; color:var(--muted); margin:0;}
+  .tools {display:flex; align-items:center; gap:7px; flex-shrink:0;}
+  button {font:inherit; cursor:pointer; border-radius:8px; border:1px solid #c7d5e2; color:var(--ink); background:#fff; font-size:12px; font-weight:650; padding:9px 11px; white-space:nowrap;}
+  button:hover {background:#e8f1fa;}
+  button:focus-visible {outline:3px solid #77a9d0;outline-offset:2px;}
+  .stage {background:#fff; border:1px solid #d8e2eb; border-radius:17px; padding:18px 18px 12px; box-shadow:var(--shadow); overflow:auto;}
+  .stage-hint {display:none; font-size:11px; color:#70849b; margin:0 0 8px;}
+  .scale-wrap {margin:auto; width:max-content; min-width:100%;}
+  .diagram {width:1200px; background:#fff; padding:0 6px 4px; transform-origin:top center;}
+  .diagram-header {background:var(--navy); color:#fff; border-radius:10px; padding:16px 24px; display:flex; align-items:center; justify-content:center; gap:13px; margin-bottom:16px;}
+  .diagram-header svg {width:26px;height:26px; flex:0 0 auto;}
+  .diagram-header strong {display:block;font-size:18px;letter-spacing:.1px;}
+  .diagram-header span {display:block;color:#d2e3f1;font-size:12px; margin-top:2px;}
+  .host-grid {display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch;}
+  .host {border:1.5px solid #a8bfd4; border-radius:11px; padding:10px; display:flex;flex-direction:column;gap:9px; min-width:0; background:#fff;}
+  .host-title {display:flex; align-items:center; justify-content:center; gap:9px; background:var(--navy-2);color:#fff;padding:8px 12px;border-radius:7px;}
+  .host-title svg {width:17px;height:17px;flex:0 0 auto;}
+  .host-identity {display:flex;flex-direction:column;align-items:center;gap:3px;line-height:1.15;}
+  .host-identity strong {font-size:14px;font-weight:750;color:#fff;}
+  .host-identity small {font-size:11px;font-weight:500;color:#d3e4f3;letter-spacing:.1px;}
+  .runtime {background:#f0f5fa; padding:9px; border-radius:8px; display:grid;gap:7px;}
+  .runtime-head {font-size:12px;font-weight:800;text-align:center;color:#355371;}
+  .manager-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .manager {background:#fff; border:1px solid #d4e0eb;border-radius:7px;padding:8px 5px;display:flex;flex-direction:column;justify-content:center;min-height:57px;text-align:center;gap:4px;}
+  .manager strong {font-size:11px;line-height:1.15;color:#283f57;}
+  .manager small {font-size:9.5px;line-height:1.25;color:#6c8194;}
+  .components {display:flex;gap:8px;flex:1;min-height:103px;align-items:stretch;}
+  .component {flex:1;min-width:0;background:var(--soft);border:1px solid #d1dfe9;border-radius:8px;padding:12px 8px;display:flex; flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:5px;}
+  .component svg {color:#657f98;width:18px;height:18px;}
+  .component strong {font-size:12px;line-height:1.28;color:var(--ink);}
+   .component small {font-size:10px;line-height:1.35;color:#75899a;overflow-wrap:anywhere;}
+  .filename-pair {display:flex;align-items:center;justify-content:center;flex-wrap:wrap;column-gap:4px;row-gap:0;font-weight:650;}
+  .win-file {color:#4d6981;}
+  .linux-file {color:#4d6981;}
+  .filename-divider {color:#91a3b5;}
+  .component {min-height:112px;}
+
+  .host.single .component {max-width:none;}
+  .connectors {display:grid;grid-template-columns:1fr 1fr;gap:16px;height:55px;align-items:stretch;}
+  .connector {display:flex; flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative;}
+  .connector svg {height:38px;width:44px;display:block;}
+  .connector span {font-size:10px;color:#528065;font-weight:650;white-space:nowrap;}
+  .bus {min-height:91px;background:linear-gradient(135deg, #257d40, #206f38);border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center;color:#fff;gap:5px;border:1px solid #1b6532;position:relative;}
+  .bus-title {display:flex;gap:10px;align-items:center;justify-content:center;font-size:21px;letter-spacing:-.2px;font-weight:750;}
+  .bus-title svg {height:25px;width:25px;}
+  .bus-sub {font-size:12px;color:#ddf0e0;}
+  .legend {display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;padding:14px 10px 2px;font-size:11px;color:#647a8b;}
+  .legend-item {display:flex;align-items:center;gap:7px;}
+  .legend-sw {width:13px;height:13px;border-radius:3px;background:var(--navy-2);}
+  .legend-sw.dll {background:var(--soft);border:1px solid #bbccd9;}
+  .legend-sw.bus-sw {background:var(--green)}
+  .note {max-width:1200px;margin:14px auto 0;display:flex;justify-content:space-between; gap:18px;align-items:flex-start;font-size:11px;line-height:1.65;color:#60768a;}
+  .note strong {color:#385776;}
+  .footer {padding:18px 2px 0;display:flex;justify-content:space-between;gap:16px;font-size:11px;color:#7a8da0;}
+  .footer span:last-child {text-align:right;}
+  @media(max-width:1050px){.page{padding:16px 12px 26px}.head{align-items:flex-start; flex-direction:column;gap:12px}.stage-hint{display:block} h1{font-size:23px}}
+  @media print {
+    @page {size:A3 landscape;margin:11mm}
+    html,body{background:#fff !important; print-color-adjust:exact;-webkit-print-color-adjust:exact}
+    .page{max-width:none;padding:0}
+    .tools,.stage-hint{display:none!important}
+    .stage{border:0;box-shadow:none;padding:0;overflow:visible;border-radius:0}
+    .diagram{width:100%;transform:none!important}
+    .scale-wrap{width:100%!important;min-width:0!important;height:auto!important}
+    h1{font-size:22px}
+    .manager-grid{grid-template-columns:repeat(4,1fr)}
+    .host-grid{break-inside:avoid}
+    .note{max-width:none}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+<header class="head">
+<div>
+<div class="eyebrow">SYSTEM DEPLOYMENT VIEW</div>
+<h1>UMAA Distributed Component Architecture</h1>
+<p class="subtitle">독립 Host Process · 실행 파일명(.exe) · 하나 이상의 UMAA Component · DDS Publish / Subscribe</p>
+</div>
+<div aria-label="도구" class="tools">
+<button id="minus" title="축소" type="button">−</button>
+<button id="plus" title="확대" type="button">＋</button>
+<button id="reset" type="button">100%</button>
+<button id="print" type="button">인쇄 / PDF</button>
+</div>
+</header>
+<section class="stage" id="stage">
+<p class="stage-hint">다이어그램을 좌우로 스크롤해서 볼 수 있어요.</p>
+<div class="scale-wrap" id="scaleWrap"><main aria-label="UMAA 분산 컴포넌트 구조도" class="diagram" id="diagram">
+<div class="diagram-header">
+<svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><rect height="6" rx="1" width="7" x="3" y="4"></rect><rect height="6" rx="1" width="7" x="14" y="4"></rect><rect height="6" rx="1" width="7" x="8.5" y="15"></rect><path d="M6.5 10v3h11v-3M12 13v2"></path></svg>
+<div><strong>UMAA Distributed Component System</strong><span>Independent Host Processes · Plugin Components · DDS Communication</span></div>
+</div>
+<div class="host-grid">
+<section aria-label="Mission Host" class="host single">
+<div class="host-title"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="18" x="3" y="4"></rect><path d="M8 21h8M12 17v4"></path></svg><span class="host-identity"><strong>MissionHost</strong><small>MissionHost.exe</small></span></div>
+<div class="runtime"><div class="runtime-head">Component Host Runtime</div><div class="manager-grid"></div></div>
+<div class="components"><div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>Mission Executor</strong><small aria-label="Windows MissionExecutor.dll, Linux libMissionExecutor.so" class="filename-pair"><span class="win-file">MissionExecutor.dll</span><span class="filename-divider">/</span><span class="linux-file">libMissionExecutor.so</span></small></div></div>
+</section>
+<section aria-label="Navigation and Environment Host" class="host">
+<div class="host-title"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="18" x="3" y="4"></rect><path d="M8 21h8M12 17v4"></path></svg><span class="host-identity"><strong>NavEnvHost</strong><small>NavEnvHost.exe</small></span></div>
+<div class="runtime"><div class="runtime-head">Component Host Runtime</div><div class="manager-grid"></div></div>
+<div class="components">
+<div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>USV Navigation</strong><small aria-label="Windows USVNavigation.dll, Linux libUSVNavigation.so" class="filename-pair"><span class="win-file">USVNavigation.dll</span><span class="filename-divider">/</span><span class="linux-file">libUSVNavigation.so</span></small></div>
+<div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>Water Environment</strong><small aria-label="Windows WaterEnvironment.dll, Linux libWaterEnvironment.so" class="filename-pair"><span class="win-file">WaterEnvironment.dll</span><span class="filename-divider">/</span><span class="linux-file">libWaterEnvironment.so</span></small></div>
+<div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>Weather</strong><small aria-label="Windows Weather.dll, Linux libWeather.so" class="filename-pair"><span class="win-file">Weather.dll</span><span class="filename-divider">/</span><span class="linux-file">libWeather.so</span></small></div>
+</div>
+</section>
+</div>
+<div class="connectors">
+<div class="connector"><svg aria-hidden="true" viewbox="0 0 44 38"><path d="M22 2v34" stroke="#298244" stroke-width="2.6"></path><path d="m15 10 7-7 7 7M15 28l7 7 7-7" fill="none" stroke="#298244" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"></path></svg><span>Publish / Subscribe</span></div>
+<div class="connector"><svg aria-hidden="true" viewbox="0 0 44 38"><path d="M22 2v34" stroke="#298244" stroke-width="2.6"></path><path d="m15 10 7-7 7 7M15 28l7 7 7-7" fill="none" stroke="#298244" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"></path></svg><span>Publish / Subscribe</span></div>
+</div>
+<div class="bus">
+<div class="bus-title"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24"><circle cx="12" cy="12" r="2"></circle><circle cx="4" cy="6" r="2"></circle><circle cx="20" cy="6" r="2"></circle><circle cx="4" cy="19" r="2"></circle><circle cx="20" cy="19" r="2"></circle><path d="m5.7 7.2 4.6 3.5m3.4 0 4.6-3.5M10.3 13.3l-4.6 4.4m8-4.4 4.6 4.4"></path></svg>DDS Logical Data Space</div>
+<div class="bus-sub">Distributed Publish / Subscribe</div>
+</div>
+<div class="connectors">
+<div class="connector"><svg aria-hidden="true" viewbox="0 0 44 38"><path d="M22 2v34" stroke="#298244" stroke-width="2.6"></path><path d="m15 10 7-7 7 7M15 28l7 7 7-7" fill="none" stroke="#298244" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"></path></svg><span>Publish / Subscribe</span></div>
+<div class="connector"><svg aria-hidden="true" viewbox="0 0 44 38"><path d="M22 2v34" stroke="#298244" stroke-width="2.6"></path><path d="m15 10 7-7 7 7M15 28l7 7 7-7" fill="none" stroke="#298244" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"></path></svg><span>Publish / Subscribe</span></div>
+</div>
+<div class="host-grid">
+<section aria-label="Maneuver Host" class="host single">
+<div class="components">
+<div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>Autopilot</strong><small aria-label="Windows Autopilot.dll, Linux libAutoPilot.so" class="filename-pair"><span class="win-file">Autopilot.dll</span><span class="filename-divider">/</span><span class="linux-file">libAutoPilot.so</span></small></div>
+
+</div>
+<div class="runtime"><div class="runtime-head">Component Host Runtime</div><div class="manager-grid"></div></div>
+<div class="host-title"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="18" x="3" y="4"></rect><path d="M8 21h8M12 17v4"></path></svg><span class="host-identity"><strong>ManeuverHost</strong><small>ManeuverHost.exe</small></span></div>
+</section>
+<section aria-label="Logging Host" class="host single">
+<div class="components"><div class="component"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7" viewbox="0 0 24 24"><path d="M12 2l9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"></path></svg><strong>Logging</strong><small aria-label="Windows Logging.dll, Linux libLogging.so" class="filename-pair"><span class="win-file">Logging.dll</span><span class="filename-divider">/</span><span class="linux-file">libLogging.so</span></small></div></div>
+<div class="runtime"><div class="runtime-head">Component Host Runtime</div><div class="manager-grid"></div></div>
+<div class="host-title"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" viewbox="0 0 24 24"><rect height="13" rx="2" width="18" x="3" y="4"></rect><path d="M8 21h8M12 17v4"></path></svg><span class="host-identity"><strong>LoggingHost</strong><small>LoggingHost.exe</small></span></div>
+</section>
+</div>
+<div class="legend">
+<span class="legend-item"><span class="legend-sw"></span>Host Process</span>
+<span class="legend-item"><span class="legend-sw dll"></span>UMAA Component (DLL / SO)</span>
+<span class="legend-item"><span class="legend-sw bus-sw"></span>DDS Logical Data Space</span>
+<span class="legend-item">↕ DDS Publish / Subscribe</span>
+</div>
+</main></div>
+</section>
+<div class="note">
+<span><strong>Component Host Runtime</strong> · Plugin Loader: DLL/SO 로딩·해제 · Lifecycle Manager: 초기화·시작·종료 · Configuration Manager: Component·DDS·QoS 설정 · DDS Runtime/Adapter: Participant·Pub/Sub 생성 및 통신</span>
+<span>Component 이름은 공개 UMAA Component Definitions 예시를 활용했으며, Host/Component 파일명 및 프로세스별 그룹 배치는 설계 예시임. 알고리즘 라이브러리는 Component 상세도에서 표현.</span>
+</div>
+<footer class="footer"><span>Architecture View · OS-agnostic logical deployment</span><span>Host는 논리적 이름과 Windows .exe 파일명을 상하로 표기했습니다(Linux 실행 파일은 보통 확장자 없음). Component는 Windows .dll / Linux .so를 함께 표시하며, DDS Data Space는 중앙 브로커가 아닙니다.</span></footer>
+</div>
+<script>
+(() => {
+  const managerData = [
+    ["Plugin Loader", "DLL/SO 로딩·해제"],
+    ["Lifecycle Manager", "초기화·시작·종료"],
+    ["Configuration Manager", "Component · DDS · QoS"],
+    ["DDS Runtime / Adapter", "Participant · Pub/Sub"]
+  ];
+  for (const grid of document.querySelectorAll('.manager-grid')) {
+    for (const [title, detail] of managerData) {
+      const card = document.createElement('div'); card.className = 'manager';
+      const b = document.createElement('strong'); b.textContent = title;
+      const s = document.createElement('small'); s.textContent = detail;
+      card.append(b,s);grid.append(card);
+    }
+  }
+  let scale = 1;
+  const diagram = document.getElementById('diagram');
+  const wrap = document.getElementById('scaleWrap');
+  const baseWidth = 1200;
+  function applyScale() {
+    diagram.style.transform = `scale(${scale})`;
+    wrap.style.width = `${baseWidth * scale}px`;
+    wrap.style.minWidth = `${baseWidth * scale}px`;
+    wrap.style.height = `${diagram.offsetHeight * scale}px`;
+    document.getElementById('reset').textContent = `${Math.round(scale*100)}%`;
+  }
+  document.getElementById('plus').onclick = () => {scale = Math.min(1.6, Math.round((scale+.1)*10)/10);applyScale()};
+  document.getElementById('minus').onclick = () => {scale = Math.max(.6, Math.round((scale-.1)*10)/10);applyScale()};
+  document.getElementById('reset').onclick = () => {scale=1;applyScale()};
+  document.getElementById('print').onclick = () => window.print();
+  window.addEventListener('resize',applyScale);
+  applyScale();
+})();
+</script>
+</body>
+</html>
