@@ -1,3 +1,9 @@
+# HANDOFF — UMAA Component SDK (current v0.8.7)
+
+**2026-11-24:** Current authority is [v0.8.7 Public API](docs/current/UMAA_Component_SDK_Public_API_v0.8.7.md) and [review/acceptance](docs/current/UMAA_Component_SDK_API_Review_v0.8.7.md). Preserve v0.8.6 generated Service facade composition, original IDL payloads, typed Operation selection and actual AutoPilot 14 roles. Nine Service names: onCommand/onCancel/respond, command/onResponse, publish/remove, onReport/getLatest. Response events, receive options and attachments replace separate verbs; retain all semantic capabilities, including recovery and manual retention. No implemented runtime or new ICD certification. Prior material below is historical and not the current contract.
+
+---
+
 # HANDOFF — UMAA Component SDK (current v0.8.6)
 
 > **Current decision, 2026-11-20:** [Public API v0.8.6](docs/current/UMAA_Component_SDK_Public_API_v0.8.6.md), [AutoPilot 14 Service Callback example](examples/api_sketch/AUTOPILOT_14_SERVICE_USAGE_v0.8.6.cpp), [real mixed Config example](examples/api_sketch/CONFIG_MIXED_SERVICE_v0.8.6.cpp), and [changelog](docs/current/CHANGELOG_v0.8.6.md) are current. **Everything below the divider is the historical v0.8.5 handoff, not the current API.**
